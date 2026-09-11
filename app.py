@@ -34,6 +34,9 @@ from reportlab.platypus import (
     Image
 )
 from reportlab.lib.units import inch
+from reportlab.lib.utils import ImageReader
+import tempfile
+import os
 
 
 # ============================================================
@@ -595,172 +598,131 @@ def generate_molecule_pdf(
 
 
 # ============================================================
+# REPORT IMAGE HELPERS
+# ============================================================
+
+def save_2d_structure_png(mol):
+    """Create a temporary PNG for inclusion in PDF reports."""
+    img = Draw.MolToImage(mol, size=(700, 500))
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    tmp.close()
+    img.save(tmp.name)
+    return tmp.name
+
+
+def save_3d_structure_png(mol):
+    """Create a simple 3D coordinate rendering from an RDKit conformer."""
+    mol3d = generate_3d_molecule(mol)
+    if mol3d is None:
+        return None
+
+    conf = mol3d.GetConformer()
+    xs, ys, zs, labels = [], [], [], []
+    for atom in mol3d.GetAtoms():
+        pos = conf.GetAtomPosition(atom.GetIdx())
+        xs.append(pos.x); ys.append(pos.y); zs.append(pos.z)
+        labels.append(atom.GetSymbol())
+
+    fig = plt.figure(figsize=(7, 5))
+    ax = fig.add_subplot(111, projection="3d")
+
+    for bond in mol3d.GetBonds():
+        a = conf.GetAtomPosition(bond.GetBeginAtomIdx())
+        b = conf.GetAtomPosition(bond.GetEndAtomIdx())
+        ax.plot([a.x, b.x], [a.y, b.y], [a.z, b.z])
+
+    ax.scatter(xs, ys, zs, s=80)
+    for x, y, z, label in zip(xs, ys, zs, labels):
+        ax.text(x, y, z, label, fontsize=8)
+
+    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
+    ax.set_title("3D Molecular Structure")
+    ax.view_init(elev=25, azim=45)
+
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    tmp.close()
+    fig.savefig(tmp.name, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return tmp.name
+
+
+# ============================================================
 # GENERATE GENERAL FINAL PROJECT REPORT
 # ============================================================
 
-def generate_final_report():
-
+def generate_final_report(student_name, registration_number, input_smiles, mol, properties):
+    """Generate a personalized final report for the student's entered molecule."""
     buffer = BytesIO()
-
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=50,
-        rightMargin=50,
-        topMargin=55,
-        bottomMargin=50
-    )
-
+    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=45, rightMargin=45,
+                            topMargin=45, bottomMargin=45)
     styles = getSampleStyleSheet()
-
-    title_style = ParagraphStyle(
-        "ProjectTitle",
-        parent=styles["Title"],
-        fontSize=22,
-        leading=28,
-        alignment=TA_CENTER,
-        textColor=HexColor("#17365D")
-    )
-
-    subtitle_style = ParagraphStyle(
-        "ProjectSubtitle",
-        parent=styles["Normal"],
-        fontSize=13,
-        leading=18,
-        alignment=TA_CENTER
-    )
-
-    heading_style = ParagraphStyle(
-        "ProjectHeading",
-        parent=styles["Heading1"],
-        fontSize=16,
-        leading=20,
-        textColor=HexColor("#17365D")
-    )
-
-    body_style = ParagraphStyle(
-        "ProjectBody",
-        parent=styles["BodyText"],
-        fontSize=10,
-        leading=15,
-        alignment=TA_JUSTIFY
-    )
+    title_style = ParagraphStyle("ProjectTitle", parent=styles["Title"], fontSize=20,
+                                 leading=25, alignment=TA_CENTER, textColor=HexColor("#17365D"))
+    heading_style = ParagraphStyle("ProjectHeading", parent=styles["Heading1"], fontSize=14,
+                                   leading=18, textColor=HexColor("#17365D"))
+    body_style = ParagraphStyle("ProjectBody", parent=styles["BodyText"], fontSize=10,
+                                leading=14, alignment=TA_JUSTIFY)
 
     story = []
+    story += [Spacer(1, 0.5*inch), Paragraph("CHEMINFORMATICS VIRTUAL LABORATORY", title_style),
+              Spacer(1, 0.2*inch), Paragraph("FINAL STUDENT MOLECULAR ANALYSIS REPORT", heading_style),
+              Spacer(1, 0.25*inch)]
 
-    # COVER PAGE
+    student_data = [["Student Name", student_name or "Not provided"],
+                    ["Registration Number", registration_number or "Not provided"],
+                    ["Input SMILES", input_smiles],
+                    ["Canonical SMILES", Chem.MolToSmiles(mol)],
+                    ["Molecular Formula", properties["Molecular Formula"]]]
+    t = Table(student_data, colWidths=[2.1*inch, 4.0*inch])
+    t.setStyle(TableStyle([("GRID", (0,0),(-1,-1),0.5,colors.grey),
+                           ("BACKGROUND",(0,0),(0,-1),HexColor("#EAF0F8")),
+                           ("VALIGN",(0,0),(-1,-1),"TOP"),
+                           ("PADDING",(0,0),(-1,-1),6)]))
+    story += [t, Spacer(1,0.25*inch)]
 
-    story.append(
-        Spacer(1, 1 * inch)
-    )
+    story.append(Paragraph("1. Molecular Structures", heading_style))
+    img2d = save_2d_structure_png(mol)
+    img3d = save_3d_structure_png(mol)
+    try:
+        if img2d and img3d:
+            structure_table = Table([[Image(img2d, width=3.0*inch, height=2.2*inch),
+                                      Image(img3d, width=3.0*inch, height=2.2*inch)]],
+                                    colWidths=[3.1*inch,3.1*inch])
+            structure_table.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
+            story += [structure_table, Paragraph("Left: 2D molecular structure &nbsp;&nbsp;&nbsp; Right: generated 3D molecular structure", body_style)]
+        elif img2d:
+            story.append(Image(img2d, width=5.5*inch, height=3.9*inch))
+    finally:
+        pass
+    story += [Spacer(1,0.2*inch)]
 
-    story.append(
-        Paragraph(
-            "FINAL PROJECT REPORT",
-            subtitle_style
-        )
-    )
+    story.append(Paragraph("2. Complete Molecular Properties", heading_style))
+    prop_data = [["Property", "Value"]]
+    for k,v in properties.items(): prop_data.append([k, str(v)])
+    pt = Table(prop_data, colWidths=[3.5*inch,2.7*inch], repeatRows=1)
+    pt.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HexColor("#2F5597")),
+                            ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+                            ("GRID",(0,0),(-1,-1),0.5,colors.grey),
+                            ("VALIGN",(0,0),(-1,-1),"TOP"),
+                            ("PADDING",(0,0),(-1,-1),5)]))
+    story += [pt, Spacer(1,0.2*inch)]
 
-    story.append(
-        Spacer(1, 0.3 * inch)
-    )
+    story.append(Paragraph("3. Interpretation", heading_style))
+    story.append(Paragraph(
+        "This personalized report was generated from the student's submitted SMILES notation. "
+        "The application converted the molecular representation into a validated chemical structure, "
+        "calculated physicochemical descriptors and bond information, and generated both 2D and 3D molecular representations using RDKit.",
+        body_style))
 
-    story.append(
-        Paragraph(
-            "Cheminformatics Virtual Laboratory",
-            title_style
-        )
-    )
-
-    story.append(
-        Spacer(1, 0.3 * inch)
-    )
-
-    story.append(
-        Paragraph(
-            "An Interactive Platform for Molecular Representation, "
-            "Visualization and Molecular Property Analysis",
-            subtitle_style
-        )
-    )
-
-    story.append(
-        PageBreak()
-    )
-
-    sections = [
-
-        (
-            "1. Abstract",
-
-            "The Cheminformatics Virtual Laboratory was developed "
-            "as an interactive web-based platform for teaching "
-            "molecular representation, visualization and molecular "
-            "property calculation."
-        ),
-
-        (
-            "2. Objectives",
-
-            "The objectives include molecular visualization, SMILES "
-            "representation, descriptor calculation, structure-property "
-            "analysis and student assessment."
-        ),
-
-        (
-            "3. Technologies Used",
-
-            "The project uses Python, Streamlit, RDKit, Pandas, "
-            "Matplotlib, py3Dmol and ReportLab."
-        ),
-
-        (
-            "4. Functional Modules",
-
-            "The application contains Home, Theory, Molecular "
-            "Visualization, Molecular Descriptor Calculation, "
-            "Structure–Property Analysis, Assessment and Final Report modules."
-        ),
-
-        (
-            "5. Conclusion",
-
-            "The application provides an interactive virtual laboratory "
-            "environment for students to explore molecular structures "
-            "and their physicochemical properties."
-        )
-    ]
-
-    for heading, content in sections:
-
-        story.append(
-            Paragraph(
-                heading,
-                heading_style
-            )
-        )
-
-        story.append(
-            Spacer(1, 0.1 * inch)
-        )
-
-        story.append(
-            Paragraph(
-                content,
-                body_style
-            )
-        )
-
-        story.append(
-            Spacer(1, 0.2 * inch)
-        )
+    story += [Spacer(1,0.2*inch), Paragraph("Developed by Dr. R. Subramanian, Assistant Professor, Division of Chemistry, School of Sciences, Faculty of Engineering and Technology, SRM Institute of Science and Technology, Tiruchirappalli.", body_style)]
+    story.append(Paragraph("For queries: rsmani84@gmail.com", body_style))
 
     doc.build(story)
-
-    pdf_data = buffer.getvalue()
-
-    buffer.close()
-
+    pdf_data = buffer.getvalue(); buffer.close()
+    for path in [img2d, img3d]:
+        if path and os.path.exists(path):
+            try: os.remove(path)
+            except Exception: pass
     return pdf_data
 
 
@@ -794,6 +756,10 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.divider()
+
+st.sidebar.markdown("### 👩‍🎓 Student Information")
+student_name = st.sidebar.text_input("Student Name", key="student_name")
+registration_number = st.sidebar.text_input("Registration Number", key="registration_number")
 
 st.sidebar.markdown("""
 ### 🎓 Learning Objectives
@@ -1205,6 +1171,10 @@ generate a complete molecular properties report.
             properties = calculate_properties(mol)
 
             canonical_smiles = Chem.MolToSmiles(mol)
+
+            # Save the latest student-entered molecule for the Final Project Report
+            st.session_state.latest_smiles = smiles
+            st.session_state.latest_properties = properties
 
             # ------------------------------------------------
             # BASIC INFORMATION
@@ -1632,42 +1602,18 @@ elif page == "📝 Assessment":
     st.title("📝 Cheminformatics Assessment")
 
     questions = [
-
-        {
-            "question": "What does SMILES represent?",
-
-            "options": [
-                "A molecular text representation",
-                "A spectroscopy technique",
-                "A laboratory instrument"
-            ],
-
-            "answer": "A molecular text representation"
-        },
-
-        {
-            "question": "Which property is commonly associated with molecular lipophilicity?",
-
-            "options": [
-                "LogP",
-                "TPSA",
-                "HBD"
-            ],
-
-            "answer": "LogP"
-        },
-
-        {
-            "question": "What does HBA mean?",
-
-            "options": [
-                "Hydrogen Bond Acceptor",
-                "Heavy Bond Atom",
-                "Hydrogen Bond Analysis"
-            ],
-
-            "answer": "Hydrogen Bond Acceptor"
-        }
+        {"question":"What is the full form of SMILES?", "options":["Simplified Molecular Input Line Entry System","Standard Molecular Information Language Encoding System","Simple Molecular Identification and Labeling System"], "answer":"Simplified Molecular Input Line Entry System"},
+        {"question":"What does a SMILES string represent?", "options":["A molecular structure using text","A spectroscopy technique","A laboratory instrument"], "answer":"A molecular structure using text"},
+        {"question":"Which SMILES represents ethanol?", "options":["CCO","c1ccccc1","CC(=O)O"], "answer":"CCO"},
+        {"question":"Which SMILES represents benzene?", "options":["c1ccccc1","CCO","O=C=O"], "answer":"c1ccccc1"},
+        {"question":"In SMILES, parentheses are mainly used to indicate:", "options":["Branches","Molecular weight","Atom colour"], "answer":"Branches"},
+        {"question":"Which property is commonly associated with molecular lipophilicity?", "options":["LogP","TPSA","HBD"], "answer":"LogP"},
+        {"question":"What does TPSA describe?", "options":["Topological Polar Surface Area","Total Pi Surface Area","Thermal Property Surface Analysis"], "answer":"Topological Polar Surface Area"},
+        {"question":"What does HBA mean?", "options":["Hydrogen Bond Acceptor","Heavy Bond Atom","Hydrogen Bond Analysis"], "answer":"Hydrogen Bond Acceptor"},
+        {"question":"What does HBD mean?", "options":["Hydrogen Bond Donor","Heavy Bond Descriptor","Hydrogen Bond Distance"], "answer":"Hydrogen Bond Donor"},
+        {"question":"A double bond contains how many pi (π) bonds?", "options":["1","2","0"], "answer":"1"},
+        {"question":"A triple bond contains how many pi (π) bonds?", "options":["2","1","3"], "answer":"2"},
+        {"question":"Which model is useful for visualizing approximate molecular volume?", "options":["Space Filling","Wireframe only","Text SMILES"], "answer":"Space Filling"}
     ]
 
     student_answers = []
@@ -1724,42 +1670,36 @@ elif page == "📝 Assessment":
 
 elif page == "📄 Final Project Report":
 
-    st.title("📄 Final Project Report")
+    st.title("📄 Final Student Molecular Analysis Report")
+    st.write("This report uses the latest valid SMILES entered in the Molecular Properties Report page.")
 
-    st.markdown("""
-### Cheminformatics Virtual Laboratory
+    name = st.text_input("Student Name for Report", value=st.session_state.get("student_name", ""), key="final_report_name")
+    reg = st.text_input("Registration Number for Report", value=st.session_state.get("registration_number", ""), key="final_report_reg")
 
-Generate and download the complete final project report
-in PDF format.
-""")
+    default_smiles = st.session_state.get("latest_smiles", "CCO")
+    report_smiles = st.text_input("SMILES for Final Report", value=default_smiles, key="final_report_smiles")
+    report_mol = get_molecule(report_smiles)
 
-    if st.button(
-        "📄 Generate Final Project Report"
-    ):
+    if report_mol is None:
+        st.error("❌ Please enter a valid SMILES notation for the final report.")
+    else:
+        report_properties = calculate_properties(report_mol)
+        st.success("✅ Valid molecule ready for the final report.")
+        st.write("**Molecular Formula:**", report_properties["Molecular Formula"])
+        st.write("**Molecular Weight:**", report_properties["Molecular Weight"], "g/mol")
+        st.write("**Sigma Bonds:**", report_properties["Sigma (σ) Bonds"])
+        st.write("**Pi Bonds:**", report_properties["Pi (π) Bonds"])
 
-        with st.spinner(
-            "Generating final project report..."
-        ):
-
-            pdf = generate_final_report()
-
-        st.success(
-            "✅ Final Project Report Generated Successfully!"
-        )
-
-        st.download_button(
-
-            label="⬇️ Download Final Project Report PDF",
-
-            data=pdf,
-
-            file_name=(
-                "Cheminformatics_Virtual_Laboratory_Final_Report.pdf"
-            ),
-
-            mime="application/pdf"
-        )
-
+        if st.button("📄 Generate Personalized Final Project Report"):
+            with st.spinner("Generating your personalized report with molecular structures and properties..."):
+                pdf = generate_final_report(name, reg, report_smiles, report_mol, report_properties)
+            st.success("✅ Final Project Report Generated Successfully!")
+            st.download_button(
+                label="⬇️ Download Personalized Final Project Report PDF",
+                data=pdf,
+                file_name="Cheminformatics_Final_Molecular_Report.pdf",
+                mime="application/pdf"
+            )
 
 # ============================================================
 # FOOTER
