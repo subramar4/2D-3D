@@ -88,6 +88,61 @@ def get_molecule(smiles):
 
 
 # ============================================================
+# CALCULATE SIGMA AND PI BONDS
+# ============================================================
+
+def calculate_bond_information(mol):
+    """
+    Calculate:
+    - Heavy-atom bonds
+    - Sigma (σ) bonds, including bonds to implicit hydrogens
+    - Pi (π) bonds
+    - Total bond order count (σ + π)
+    """
+
+    # Heavy-atom graph bonds (RDKit default molecule representation)
+    heavy_atom_bonds = mol.GetNumBonds()
+
+    # Count π bonds using a Kekulé representation for aromatic systems
+    kekule_mol = Chem.Mol(mol)
+
+    try:
+        Chem.Kekulize(kekule_mol, clearAromaticFlags=True)
+    except Exception:
+        # If Kekulization is not possible, continue with the available form
+        pass
+
+    pi_bonds = 0
+
+    for bond in kekule_mol.GetBonds():
+        bond_type = bond.GetBondType()
+
+        if bond_type == Chem.BondType.DOUBLE:
+            pi_bonds += 1
+        elif bond_type == Chem.BondType.TRIPLE:
+            pi_bonds += 2
+        elif bond_type == Chem.BondType.QUADRUPLE:
+            pi_bonds += 3
+        elif bond.GetIsAromatic():
+            # Fallback for aromatic bonds if Kekulization did not clear them
+            pi_bonds += 0.5
+
+    # Add implicit hydrogens. Every atom-to-atom connection contains one σ bond.
+    mol_with_h = Chem.AddHs(Chem.Mol(mol))
+    sigma_bonds = mol_with_h.GetNumBonds()
+
+    total_bonds = sigma_bonds + pi_bonds
+
+    return {
+        "Heavy Atom Bonds": heavy_atom_bonds,
+        "Sigma Bonds": sigma_bonds,
+        "Pi Bonds": pi_bonds,
+        "Total Bonds": total_bonds,
+        "Total Atoms Including H": mol_with_h.GetNumAtoms(),
+    }
+
+
+# ============================================================
 # CALCULATE COMPLETE MOLECULAR PROPERTIES
 # ============================================================
 
@@ -941,30 +996,39 @@ elif page == "🧬 Molecular Visualization":
         "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
     }
 
+    # Initialize widget state BEFORE the text_input is created.
+    # This avoids StreamlitWidgetAlreadyInstantiatedError.
+    if "visualization_smiles" not in st.session_state:
+        st.session_state.visualization_smiles = "CCO"
+
+    if "selected_example" not in st.session_state:
+        st.session_state.selected_example = "Ethanol"
+
+    def load_selected_example():
+        st.session_state.visualization_smiles = (
+            examples[st.session_state.selected_example]
+        )
+
     col1, col2 = st.columns([2, 1])
 
     with col1:
-
         smiles = st.text_input(
             "Enter SMILES",
-            value="CCO",
             key="visualization_smiles"
         )
 
     with col2:
-
-        selected = st.selectbox(
+        st.selectbox(
             "Choose Example Molecule",
-            list(examples.keys())
+            list(examples.keys()),
+            key="selected_example"
         )
 
-        if st.button("Load Example"):
-
-            smiles = examples[selected]
-
-            st.session_state.visualization_smiles = smiles
-
-            st.rerun()
+        st.button(
+            "Load Example",
+            on_click=load_selected_example,
+            key="load_visualization_example"
+        )
 
     mol = get_molecule(smiles)
 
@@ -1005,14 +1069,36 @@ elif page == "🧬 Molecular Visualization":
                 rdMolDescriptors.CalcMolFormula(mol)
             )
 
+            bond_info = calculate_bond_information(mol)
+
             st.write(
-                "**Atoms:**",
-                mol.GetNumAtoms()
+                "**Heavy Atoms:**",
+                mol.GetNumHeavyAtoms()
             )
 
             st.write(
-                "**Bonds:**",
-                mol.GetNumBonds()
+                "**Total Atoms (including H):**",
+                bond_info["Total Atoms Including H"]
+            )
+
+            st.write(
+                "**Heavy-Atom Bonds:**",
+                bond_info["Heavy Atom Bonds"]
+            )
+
+            st.write(
+                "**Sigma (σ) Bonds:**",
+                bond_info["Sigma Bonds"]
+            )
+
+            st.write(
+                "**Pi (π) Bonds:**",
+                bond_info["Pi Bonds"]
+            )
+
+            st.write(
+                "**Total Bonds (σ + π):**",
+                bond_info["Total Bonds"]
             )
 
         st.divider()
@@ -1153,8 +1239,23 @@ generate a complete molecular properties report.
                 )
 
                 st.write(
-                    "**Bonds:**",
-                    properties["Number of Bonds"]
+                    "**Heavy-Atom Bonds:**",
+                    properties["Heavy Atom Bonds"]
+                )
+
+                st.write(
+                    "**Sigma (σ) Bonds:**",
+                    properties["Sigma (σ) Bonds"]
+                )
+
+                st.write(
+                    "**Pi (π) Bonds:**",
+                    properties["Pi (π) Bonds"]
+                )
+
+                st.write(
+                    "**Total Bonds (σ + π):**",
+                    properties["Total Bonds (σ + π)"]
                 )
 
             st.divider()
