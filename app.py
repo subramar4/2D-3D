@@ -1513,70 +1513,40 @@ elif page == "📝 Assessment":
     questions = [
 
         {
-
-            "question":
-            "What does SMILES represent?",
+            "question": "What does SMILES represent?",
 
             "options": [
-
                 "A molecular text representation",
-
                 "A spectroscopy technique",
-
                 "A laboratory instrument"
             ],
 
-            "answer":
-            "A molecular text representation"
+            "answer": "A molecular text representation"
         },
 
         {
-
-            "question":
-            "Which property is commonly associated with molecular lipophilicity?",
+            "question": "Which property is commonly associated with molecular lipophilicity?",
 
             "options": [
-
                 "LogP",
-
                 "TPSA",
-
                 "HBD"
             ],
 
-            "answer":
-            "LogP"
+            "answer": "LogP"
         },
 
         {
+            "question": "What does HBA mean?",
 
-            "question":
-            "What does HBA mean?",
-
-            [
-
+            "options": [
                 "Hydrogen Bond Acceptor",
-
                 "Heavy Bond Atom",
-
                 "Hydrogen Bond Analysis"
             ],
 
-            "answer":
-            "Hydrogen Bond Acceptor"
+            "answer": "Hydrogen Bond Acceptor"
         }
-    ]
-
-    # IMPORTANT:
-    # Correct the third question structure
-
-    questions[2]["options"] = [
-
-        "Hydrogen Bond Acceptor",
-
-        "Heavy Bond Atom",
-
-        "Hydrogen Bond Analysis"
     ]
 
     student_answers = []
@@ -1584,11 +1554,8 @@ elif page == "📝 Assessment":
     for i, q in enumerate(questions):
 
         answer = st.radio(
-
             q["question"],
-
             q["options"],
-
             key=f"assessment_{i}"
         )
 
@@ -1601,12 +1568,9 @@ elif page == "📝 Assessment":
         for i, q in enumerate(questions):
 
             if student_answers[i] == q["answer"]:
-
                 score += 1
 
-        percentage = (
-            score / len(questions)
-        ) * 100
+        percentage = (score / len(questions)) * 100
 
         st.success(
             f"Your Score: {score}/{len(questions)}"
@@ -1621,22 +1585,17 @@ elif page == "📝 Assessment":
 
             st.balloons()
 
-            st.success(
-                "🎉 Excellent performance!"
-            )
+            st.success("🎉 Excellent performance!")
 
         elif percentage >= 50:
 
-            st.info(
-                "👍 Good! Continue practicing."
-            )
+            st.info("👍 Good! Continue practicing.")
 
         else:
 
             st.warning(
-                "📚 Please review the theory section."
+                "📚 Please review the Theory section and try again."
             )
-
 
 # ============================================================
 # FINAL PROJECT REPORT
