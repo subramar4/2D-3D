@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 from io import BytesIO
 
 # RDKit
@@ -1143,12 +1142,12 @@ Enter any valid SMILES notation. The system will automatically
 generate a complete molecular properties report.
 """)
 
+    st.markdown("### 🧪 Enter a Molecule for Analysis")
+    st.caption("Enter a new SMILES below. The complete report will be generated automatically for that molecule.")
+
     smiles = st.text_input(
-
         "Enter New SMILES",
-
-        value="CCO",
-
+        placeholder="Example: CCO or Oc1ccccc1",
         key="properties_smiles"
     )
 
@@ -1521,77 +1520,15 @@ Aspirin,CC(=O)Oc1ccccc1C(=O)O"""
             hide_index=True
         )
 
-        columns = [
+        st.info("📋 The comparison graph has been removed. The table above provides the molecular property comparison directly.")
 
-            "MW",
-
-            "LogP",
-
-            "TPSA",
-
-            "HBD",
-
-            "HBA",
-
-            "Rotatable Bonds",
-
-            "Ring Count"
-        ]
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-
-            x_axis = st.selectbox(
-                "Select X-axis",
-                columns
-            )
-
-        with col2:
-
-            y_axis = st.selectbox(
-                "Select Y-axis",
-                columns,
-                index=1
-            )
-
-        fig, ax = plt.subplots(
-            figsize=(8, 5)
+        csv_comparison = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Download Comparison Table (CSV)",
+            data=csv_comparison,
+            file_name="Structure_Property_Comparison.csv",
+            mime="text/csv"
         )
-
-        ax.scatter(
-            df[x_axis],
-            df[y_axis],
-            s=100
-        )
-
-        for _, row in df.iterrows():
-
-            ax.annotate(
-
-                row["Molecule"],
-
-                (
-                    row[x_axis],
-
-                    row[y_axis]
-                )
-            )
-
-        ax.set_xlabel(x_axis)
-
-        ax.set_ylabel(y_axis)
-
-        ax.set_title(
-            f"{x_axis} vs {y_axis}"
-        )
-
-        ax.grid(True)
-
-        st.pyplot(fig)
-
-        plt.close(fig)
-
 
 # ============================================================
 # ASSESSMENT
@@ -1600,6 +1537,7 @@ Aspirin,CC(=O)Oc1ccccc1C(=O)O"""
 elif page == "📝 Assessment":
 
     st.title("📝 Cheminformatics Assessment")
+    st.info("Select your answers and submit the assessment. Only your score and percentage will be displayed; correct answers will not be revealed.")
 
     questions = [
         {"question":"What is the full form of SMILES?", "options":["Simplified Molecular Input Line Entry System","Standard Molecular Information Language Encoding System","Simple Molecular Identification and Labeling System"], "answer":"Simplified Molecular Input Line Entry System"},
