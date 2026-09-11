@@ -76,6 +76,31 @@ st.markdown("""
 # HELPER FUNCTIONS
 # ============================================================
 
+# ============================================================
+# SHARED MOLECULE INPUT STATE
+# ============================================================
+
+EXAMPLE_MOLECULES = {
+    "Ethanol": "CCO",
+    "Benzene": "c1ccccc1",
+    "Phenol": "Oc1ccccc1",
+    "Acetic Acid": "CC(=O)O",
+    "Aspirin": "CC(=O)Oc1ccccc1C(=O)O",
+    "Caffeine": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
+}
+
+if "active_smiles" not in st.session_state:
+    st.session_state.active_smiles = "CCO"
+
+if "selected_example" not in st.session_state:
+    st.session_state.selected_example = "Ethanol"
+
+def load_shared_example():
+    """Load the selected example into the shared SMILES field."""
+    st.session_state.active_smiles = EXAMPLE_MOLECULES[
+        st.session_state.selected_example
+    ]
+
 def get_molecule(smiles):
     """Convert SMILES into an RDKit molecule."""
 
@@ -961,56 +986,30 @@ elif page == "🧬 Molecular Visualization":
 
     st.title("🧬 Molecular Visualization Laboratory")
 
-    examples = {
-
-        "Ethanol": "CCO",
-
-        "Benzene": "c1ccccc1",
-
-        "Phenol": "Oc1ccccc1",
-
-        "Acetic Acid": "CC(=O)O",
-
-        "Aspirin": "CC(=O)Oc1ccccc1C(=O)O",
-
-        "Caffeine":
-        "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
-    }
-
-    # Initialize widget state BEFORE the text_input is created.
-    # This avoids StreamlitWidgetAlreadyInstantiatedError.
-    if "visualization_smiles" not in st.session_state:
-        st.session_state.visualization_smiles = "CCO"
-
-    if "selected_example" not in st.session_state:
-        st.session_state.selected_example = "Ethanol"
-
-    def load_selected_example():
-        st.session_state.visualization_smiles = (
-            examples[st.session_state.selected_example]
-        )
+    st.info("Enter a new SMILES or load an example. The selected molecule will be used across the laboratory pages.")
 
     col1, col2 = st.columns([2, 1])
 
     with col1:
         smiles = st.text_input(
             "Enter SMILES",
-            key="visualization_smiles"
+            key="active_smiles"
         )
 
     with col2:
         st.selectbox(
             "Choose Example Molecule",
-            list(examples.keys()),
+            list(EXAMPLE_MOLECULES.keys()),
             key="selected_example"
         )
 
         st.button(
             "Load Example",
-            on_click=load_selected_example,
+            on_click=load_shared_example,
             key="load_visualization_example"
         )
 
+    # Keep the latest valid molecule available for the other pages.
     mol = get_molecule(smiles)
 
     if mol is None:
@@ -1020,6 +1019,8 @@ elif page == "🧬 Molecular Visualization":
     else:
 
         st.success("✅ Valid Molecular Structure!")
+        st.session_state.latest_smiles = smiles
+        st.session_state.latest_properties = calculate_properties(mol)
 
         col1, col2 = st.columns([1.2, 1])
 
@@ -1147,14 +1148,30 @@ Enter any valid SMILES notation. The system will automatically
 generate a complete molecular properties report.
 """)
 
-    smiles = st.text_input(
+    st.write("### Select or Enter Your Molecule")
 
-        "Enter New SMILES",
+    col1, col2 = st.columns([2, 1])
 
-        value="CCO",
+    with col1:
+        smiles = st.text_input(
+            "Enter New SMILES",
+            key="active_smiles"
+        )
 
-        key="properties_smiles"
-    )
+    with col2:
+        st.selectbox(
+            "Choose Example Molecule",
+            list(EXAMPLE_MOLECULES.keys()),
+            key="selected_example"
+        )
+
+        st.button(
+            "Load Example",
+            on_click=load_shared_example,
+            key="load_properties_example"
+        )
+
+    st.caption("Once you enter a valid SMILES or load an example, the complete 2D/3D structures and molecular properties below are generated for the same molecule.")
 
     if smiles:
 
@@ -1525,76 +1542,19 @@ Aspirin,CC(=O)Oc1ccccc1C(=O)O"""
             hide_index=True
         )
 
-        columns = [
+        st.subheader("📋 Comparison Table")
 
-            "MW",
-
-            "LogP",
-
-            "TPSA",
-
-            "HBD",
-
-            "HBA",
-
-            "Rotatable Bonds",
-
-            "Ring Count"
-        ]
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-
-            x_axis = st.selectbox(
-                "Select X-axis",
-                columns
-            )
-
-        with col2:
-
-            y_axis = st.selectbox(
-                "Select Y-axis",
-                columns,
-                index=1
-            )
-
-        fig, ax = plt.subplots(
-            figsize=(8, 5)
+        csv_data = df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "⬇️ Download Comparison Table (CSV)",
+            data=csv_data,
+            file_name="structure_property_comparison.csv",
+            mime="text/csv",
+            key="download_structure_property_csv"
         )
 
-        ax.scatter(
-            df[x_axis],
-            df[y_axis],
-            s=100
-        )
-
-        for _, row in df.iterrows():
-
-            ax.annotate(
-
-                row["Molecule"],
-
-                (
-                    row[x_axis],
-
-                    row[y_axis]
-                )
-            )
-
-        ax.set_xlabel(x_axis)
-
-        ax.set_ylabel(y_axis)
-
-        ax.set_title(
-            f"{x_axis} vs {y_axis}"
-        )
-
-        ax.grid(True)
-
-        st.pyplot(fig)
-
-        plt.close(fig)
+    else:
+        st.warning("Please enter at least one valid molecule in the format: Molecule Name, SMILES")
 
 
 # ============================================================
@@ -1685,8 +1645,15 @@ elif page == "📄 Final Project Report":
     name = st.text_input("Student Name for Report", value=st.session_state.get("student_name", ""), key="final_report_name")
     reg = st.text_input("Registration Number for Report", value=st.session_state.get("registration_number", ""), key="final_report_reg")
 
-    default_smiles = st.session_state.get("latest_smiles", "CCO")
-    report_smiles = st.text_input("SMILES for Final Report", value=default_smiles, key="final_report_smiles")
+    default_smiles = st.session_state.get(
+        "latest_smiles",
+        st.session_state.get("active_smiles", "CCO")
+    )
+    report_smiles = st.text_input(
+        "SMILES for Final Report",
+        value=default_smiles,
+        key="final_report_smiles"
+    )
     report_mol = get_molecule(report_smiles)
 
     if report_mol is None:
