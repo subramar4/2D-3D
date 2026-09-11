@@ -93,6 +93,9 @@ def get_molecule(smiles):
 
 def calculate_properties(mol):
 
+    # Calculate bond information
+    bond_info = calculate_bond_information(mol)
+
     molecular_formula = rdMolDescriptors.CalcMolFormula(mol)
 
     properties = {
@@ -135,7 +138,14 @@ def calculate_properties(mol):
 
         "Heavy Atoms": mol.GetNumHeavyAtoms(),
 
-        "Number of Bonds": mol.GetNumBonds(),
+        # Bond information
+        "Heavy Atom Bonds": bond_info["Heavy Atom Bonds"],
+
+        "Sigma (σ) Bonds": bond_info["Sigma Bonds"],
+
+        "Pi (π) Bonds": bond_info["Pi Bonds"],
+
+        "Total Bonds (σ + π)": bond_info["Total Bonds"],
 
         "Fraction Csp3": round(
             rdMolDescriptors.CalcFractionCSP3(mol),
@@ -149,7 +159,6 @@ def calculate_properties(mol):
     }
 
     return properties
-
 
 # ============================================================
 # GENERATE 2D IMAGE
