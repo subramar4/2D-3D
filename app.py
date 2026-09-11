@@ -1202,12 +1202,34 @@ Students can learn:
 
 if page == "🏠 Home":
 
+    # ========================================================
+    # INSTITUTIONAL HEADER / COLLEGE LOGO
+    # ========================================================
+    logo_path = os.path.join(os.path.dirname(__file__), "srm_logo.jpeg")
+
+    if os.path.exists(logo_path):
+        logo_col1, logo_col2, logo_col3 = st.columns([1, 4, 1])
+        with logo_col2:
+            st.image(logo_path, use_container_width=True)
+
     st.markdown(
-        '<div class="main-title">'
-        '🧪 Cheminformatics Virtual Laboratory'
-        '</div>',
+        '<div class="main-title">🧪 Cheminformatics Virtual Laboratory</div>',
         unsafe_allow_html=True
     )
+
+    st.markdown(
+        """
+        <div style="text-align:center; font-size:24px; font-weight:700; color:#1f4e79;">
+        SRM Institute of Science and Technology, Tiruchirappalli
+        </div>
+        <div style="text-align:center; font-size:18px; font-weight:600; margin-top:5px;">
+        Faculty of Engineering and Technology | School of Sciences | Division of Chemistry
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.divider()
 
     st.markdown("## Welcome to the Virtual Laboratory")
 
