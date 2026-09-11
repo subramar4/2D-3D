@@ -3,4 +3,3 @@ pandas
 matplotlib
 py3Dmol
 rdkit
-libxrender1
