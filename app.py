@@ -636,9 +636,11 @@ def save_2d_structure_png(mol):
 
 
 def save_3d_structure_png(mol):
-    """Create a simple 3D coordinate rendering from an RDKit conformer."""
-    # Local import keeps the report generator self-contained and avoids
-    # a NameError if the global plotting alias is not available.
+    """
+    Create a clear ball-and-stick style 3D image for the PDF report.
+    The plot is intentionally simplified: axes and coordinate grids are
+    removed so the molecular geometry is easier for students to see.
+    """
     import matplotlib.pyplot as plt
 
     mol3d = generate_3d_molecule(mol)
@@ -646,33 +648,281 @@ def save_3d_structure_png(mol):
         return None
 
     conf = mol3d.GetConformer()
-    xs, ys, zs, labels = [], [], [], []
-    for atom in mol3d.GetAtoms():
-        pos = conf.GetAtomPosition(atom.GetIdx())
-        xs.append(pos.x); ys.append(pos.y); zs.append(pos.z)
-        labels.append(atom.GetSymbol())
 
-    fig = plt.figure(figsize=(7, 5))
+    # Standard approximate CPK colours and relative atom sizes.
+    cpk = {
+        "H": "#FFFFFF",
+        "C": "#404040",
+        "N": "#3050F8",
+        "O": "#FF0D0D",
+        "F": "#90E050",
+        "P": "#FF8000",
+        "S": "#FFFF30",
+        "Cl": "#1FF01F",
+        "Br": "#A62929",
+        "I": "#940094",
+    }
+    atom_sizes = {
+        "H": 45, "C": 130, "N": 145, "O": 150,
+        "F": 140, "P": 165, "S": 170, "Cl": 175,
+        "Br": 190, "I": 210
+    }
+
+    fig = plt.figure(figsize=(8.2, 6.2), facecolor="white")
     ax = fig.add_subplot(111, projection="3d")
+    ax.set_facecolor("white")
 
+    # Draw bonds first so atoms appear clearly above them.
     for bond in mol3d.GetBonds():
         a = conf.GetAtomPosition(bond.GetBeginAtomIdx())
         b = conf.GetAtomPosition(bond.GetEndAtomIdx())
-        ax.plot([a.x, b.x], [a.y, b.y], [a.z, b.z])
 
-    ax.scatter(xs, ys, zs, s=80)
-    for x, y, z, label in zip(xs, ys, zs, labels):
-        ax.text(x, y, z, label, fontsize=8)
+        ax.plot(
+            [a.x, b.x], [a.y, b.y], [a.z, b.z],
+            color="#666666",
+            linewidth=2.4,
+            alpha=0.95
+        )
 
-    ax.set_xlabel("X"); ax.set_ylabel("Y"); ax.set_zlabel("Z")
-    ax.set_title("3D Molecular Structure")
-    ax.view_init(elev=25, azim=45)
+    # Draw atoms. Hydrogen atoms are smaller to improve readability.
+    for atom in mol3d.GetAtoms():
+        pos = conf.GetAtomPosition(atom.GetIdx())
+        symbol = atom.GetSymbol()
+
+        ax.scatter(
+            pos.x, pos.y, pos.z,
+            s=atom_sizes.get(symbol, 140),
+            c=cpk.get(symbol, "#B0B0B0"),
+            edgecolors="black",
+            linewidths=0.5,
+            depthshade=True
+        )
+
+        # Label only non-hydrogen atoms to avoid clutter.
+        if symbol != "H":
+            ax.text(
+                pos.x, pos.y, pos.z,
+                f" {symbol}",
+                fontsize=9,
+                fontweight="bold"
+            )
+
+    # Equal visual scale prevents molecular distortion.
+    coords = []
+    for atom in mol3d.GetAtoms():
+        pos = conf.GetAtomPosition(atom.GetIdx())
+        coords.append((pos.x, pos.y, pos.z))
+
+    xs = [c[0] for c in coords]
+    ys = [c[1] for c in coords]
+    zs = [c[2] for c in coords]
+
+    if xs and ys and zs:
+        x_mid = (max(xs) + min(xs)) / 2
+        y_mid = (max(ys) + min(ys)) / 2
+        z_mid = (max(zs) + min(zs)) / 2
+        span = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs), 1.0) / 2
+        span *= 1.25
+
+        ax.set_xlim(x_mid-span, x_mid+span)
+        ax.set_ylim(y_mid-span, y_mid+span)
+        ax.set_zlim(z_mid-span, z_mid+span)
+
+    ax.set_title("3D Molecular Structure (Ball-and-Stick)", fontsize=15, pad=12)
+    ax.set_axis_off()
+
+    try:
+        ax.set_proj_type("ortho")
+    except Exception:
+        pass
+
+    ax.view_init(elev=20, azim=35)
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     tmp.close()
-    fig.savefig(tmp.name, dpi=150, bbox_inches="tight")
+
+    fig.savefig(
+        tmp.name,
+        dpi=260,
+        bbox_inches="tight",
+        facecolor="white",
+        pad_inches=0.15
+    )
     plt.close(fig)
+
     return tmp.name
+
+
+# ============================================================
+# PROPERTY INTERPRETATION HELPERS
+# ============================================================
+
+def get_property_interpretation(property_name, value, properties):
+    """Return a student-friendly interpretation for each reported property."""
+
+    if property_name == "Molecular Formula":
+        return (
+            "Shows the elemental composition of the molecule and is useful "
+            "for understanding its basic chemical composition."
+        )
+
+    if property_name == "Molecular Weight":
+        return (
+            "Represents the average molecular mass. Molecular size and mass "
+            "can influence diffusion, formulation and many physicochemical behaviours."
+        )
+
+    if property_name == "Exact Molecular Weight":
+        return (
+            "The monoisotopic mass calculated from exact isotopic masses; "
+            "this is especially useful when comparing mass-spectrometry data."
+        )
+
+    if property_name == "LogP":
+        if value < 0:
+            return "A negative value indicates a preference toward the aqueous phase and relatively high hydrophilicity."
+        elif value < 1:
+            return "Indicates low to moderate lipophilicity, suggesting a reasonable preference for polar environments."
+        elif value < 3:
+            return "Indicates moderate lipophilicity, often reflecting a balance between hydrophilic and hydrophobic character."
+        else:
+            return "Indicates relatively high lipophilicity and a stronger preference for non-polar environments."
+
+    if property_name == "TPSA":
+        if value < 60:
+            return "A relatively low polar surface area, indicating limited overall molecular polarity."
+        elif value < 140:
+            return "A moderate polar surface area, reflecting the contribution of heteroatoms to molecular polarity."
+        else:
+            return "A high polar surface area, indicating substantial polarity and strong hydrogen-bonding potential."
+
+    if property_name == "Hydrogen Bond Donors":
+        return (
+            f"The molecule has {value} donor site(s) capable of donating hydrogen in hydrogen-bond interactions."
+        )
+
+    if property_name == "Hydrogen Bond Acceptors":
+        return (
+            f"The molecule has {value} acceptor site(s) capable of accepting hydrogen in hydrogen-bond interactions."
+        )
+
+    if property_name == "Rotatable Bonds":
+        if value == 0:
+            return "No freely rotatable bonds are detected, suggesting a relatively rigid molecular framework."
+        return f"{value} rotatable bond(s) indicate conformational flexibility in the molecular structure."
+
+    if property_name == "Ring Count":
+        return f"The molecule contains {value} ring(s), which contribute to its overall shape and structural rigidity."
+
+    if property_name == "Aromatic Rings":
+        return f"{value} aromatic ring(s) contribute to aromaticity, planarity and delocalized π-electron character."
+
+    if property_name == "Aliphatic Rings":
+        return f"{value} non-aromatic ring(s) contribute to cyclic structure without aromatic π-electron delocalization."
+
+    if property_name == "Number of Atoms":
+        return "Counts atoms explicitly present in the RDKit molecular representation; implicit hydrogens are not included here."
+
+    if property_name == "Heavy Atoms":
+        return "Counts all non-hydrogen atoms and provides a useful measure of molecular structural size."
+
+    if property_name == "Heavy Atom Bonds":
+        return "Counts connections between non-hydrogen atoms in the molecular graph."
+
+    if property_name == "Sigma (σ) Bonds":
+        return "Every bonded atom pair contains one σ bond; this value includes bonds involving explicit or added hydrogens."
+
+    if property_name == "Pi (π) Bonds":
+        return "π bonds arise from multiple bonds and aromatic systems and are associated with electron delocalization."
+
+    if property_name == "Total Bonds (σ + π)":
+        return "Represents the total bond components obtained by adding the calculated σ and π bond counts."
+
+    if property_name == "Fraction Csp3":
+        if value < 0.25:
+            return "A low sp³ fraction suggests a comparatively planar, unsaturated or aromatic structural character."
+        elif value < 0.60:
+            return "An intermediate sp³ fraction indicates a balance between saturated and unsaturated structural features."
+        return "A high sp³ fraction indicates a more saturated, three-dimensional molecular framework."
+
+    if property_name == "Molar Refractivity":
+        return "Relates to molecular volume and electronic polarizability and reflects how the electron cloud responds to an electric field."
+
+    return "This descriptor provides additional quantitative information about the molecular structure and physicochemical behaviour."
+
+
+def build_key_interpretation_points(properties):
+    """Create concise point-wise conclusions for the final report."""
+    points = []
+
+    points.append(
+        f"<b>• Molecular identity:</b> The submitted structure has molecular formula "
+        f"<b>{properties['Molecular Formula']}</b> and molecular weight "
+        f"<b>{properties['Molecular Weight']}</b>."
+    )
+
+    logp = properties["LogP"]
+    if logp < 0:
+        lipophilic_text = "more hydrophilic than lipophilic"
+    elif logp < 1:
+        lipophilic_text = "low in lipophilicity"
+    elif logp < 3:
+        lipophilic_text = "moderately lipophilic"
+    else:
+        lipophilic_text = "strongly lipophilic"
+
+    points.append(
+        f"<b>• Lipophilicity:</b> LogP = <b>{logp}</b>, indicating that the molecule is "
+        f"<b>{lipophilic_text}</b>. This descriptor describes the balance between "
+        f"preference for non-polar and polar environments."
+    )
+
+    points.append(
+        f"<b>• Molecular polarity:</b> TPSA = <b>{properties['TPSA']}</b> Å². "
+        f"TPSA reflects the contribution of polar atoms and functional groups to the "
+        f"overall surface polarity of the molecule."
+    )
+
+    points.append(
+        f"<b>• Hydrogen bonding:</b> The structure contains "
+        f"<b>{properties['Hydrogen Bond Donors']}</b> hydrogen-bond donor(s) and "
+        f"<b>{properties['Hydrogen Bond Acceptors']}</b> acceptor(s), which helps "
+        f"describe possible intermolecular interactions."
+    )
+
+    points.append(
+        f"<b>• Flexibility:</b> {properties['Rotatable Bonds']} rotatable bond(s) "
+        f"indicate the degree of conformational freedom available to the molecule."
+    )
+
+    points.append(
+        f"<b>• Cyclic and aromatic character:</b> The molecule contains "
+        f"{properties['Ring Count']} ring(s), including "
+        f"{properties['Aromatic Rings']} aromatic ring(s). Aromatic rings are "
+        f"associated with delocalized π-electron systems."
+    )
+
+    points.append(
+        f"<b>• Bonding pattern:</b> The calculated structure contains "
+        f"<b>{properties['Sigma (σ) Bonds']}</b> σ bonds and "
+        f"<b>{properties['Pi (π) Bonds']}</b> π bonds. This helps distinguish the "
+        f"framework-forming σ bonds from multiple-bond and delocalized π bonding."
+    )
+
+    points.append(
+        f"<b>• Three-dimensional character:</b> Fraction Csp³ = "
+        f"<b>{properties['Fraction Csp3']}</b>. This descriptor provides a simple "
+        f"indication of the balance between saturated 3D carbon environments and "
+        f"planar/unsaturated environments."
+    )
+
+    points.append(
+        "<b>• Overall conclusion:</b> The calculated descriptors should be interpreted "
+        "together with the 2D connectivity and generated 3D geometry to understand "
+        "the molecule's composition, bonding, polarity, flexibility and structural character."
+    )
+
+    return points
 
 
 # ============================================================
@@ -680,78 +930,208 @@ def save_3d_structure_png(mol):
 # ============================================================
 
 def generate_final_report(student_name, registration_number, input_smiles, mol, properties):
-    """Generate a personalized final report for the student's entered molecule."""
+    """Generate a detailed personalized final report for the student's molecule."""
+
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=45, rightMargin=45,
-                            topMargin=45, bottomMargin=45)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=38,
+        rightMargin=38,
+        topMargin=40,
+        bottomMargin=40
+    )
+
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle("ProjectTitle", parent=styles["Title"], fontSize=20,
-                                 leading=25, alignment=TA_CENTER, textColor=HexColor("#17365D"))
-    heading_style = ParagraphStyle("ProjectHeading", parent=styles["Heading1"], fontSize=14,
-                                   leading=18, textColor=HexColor("#17365D"))
-    body_style = ParagraphStyle("ProjectBody", parent=styles["BodyText"], fontSize=10,
-                                leading=14, alignment=TA_JUSTIFY)
+
+    title_style = ParagraphStyle(
+        "ProjectTitle",
+        parent=styles["Title"],
+        fontSize=20,
+        leading=25,
+        alignment=TA_CENTER,
+        textColor=HexColor("#17365D")
+    )
+
+    heading_style = ParagraphStyle(
+        "ProjectHeading",
+        parent=styles["Heading1"],
+        fontSize=14,
+        leading=18,
+        textColor=HexColor("#17365D"),
+        spaceBefore=8,
+        spaceAfter=8
+    )
+
+    body_style = ParagraphStyle(
+        "ProjectBody",
+        parent=styles["BodyText"],
+        fontSize=9.5,
+        leading=13,
+        alignment=TA_JUSTIFY
+    )
+
+    small_style = ParagraphStyle(
+        "SmallTableText",
+        parent=styles["BodyText"],
+        fontSize=7.5,
+        leading=9.5
+    )
+
+    header_style = ParagraphStyle(
+        "HeaderTableText",
+        parent=styles["BodyText"],
+        fontSize=8,
+        leading=9,
+        textColor=colors.white,
+        alignment=TA_CENTER
+    )
 
     story = []
-    story += [Spacer(1, 0.5*inch), Paragraph("CHEMINFORMATICS VIRTUAL LABORATORY", title_style),
-              Spacer(1, 0.2*inch), Paragraph("FINAL STUDENT MOLECULAR ANALYSIS REPORT", heading_style),
-              Spacer(1, 0.25*inch)]
 
-    student_data = [["Student Name", student_name or "Not provided"],
-                    ["Registration Number", registration_number or "Not provided"],
-                    ["Input SMILES", input_smiles],
-                    ["Canonical SMILES", Chem.MolToSmiles(mol)],
-                    ["Molecular Formula", properties["Molecular Formula"]]]
-    t = Table(student_data, colWidths=[2.1*inch, 4.0*inch])
-    t.setStyle(TableStyle([("GRID", (0,0),(-1,-1),0.5,colors.grey),
-                           ("BACKGROUND",(0,0),(0,-1),HexColor("#EAF0F8")),
-                           ("VALIGN",(0,0),(-1,-1),"TOP"),
-                           ("PADDING",(0,0),(-1,-1),6)]))
-    story += [t, Spacer(1,0.25*inch)]
+    story += [
+        Spacer(1, 0.25 * inch),
+        Paragraph("CHEMINFORMATICS VIRTUAL LABORATORY", title_style),
+        Spacer(1, 0.12 * inch),
+        Paragraph("FINAL STUDENT MOLECULAR ANALYSIS REPORT", heading_style),
+        Spacer(1, 0.18 * inch)
+    ]
 
+    student_data = [
+        ["Student Name", student_name or "Not provided"],
+        ["Registration Number", registration_number or "Not provided"],
+        ["Input SMILES", input_smiles],
+        ["Canonical SMILES", Chem.MolToSmiles(mol)],
+        ["Molecular Formula", properties["Molecular Formula"]]
+    ]
+
+    student_table = Table(student_data, colWidths=[2.0 * inch, 4.7 * inch])
+    student_table.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("BACKGROUND", (0, 0), (0, -1), HexColor("#EAF0F8")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("PADDING", (0, 0), (-1, -1), 6)
+    ]))
+
+    story += [student_table, Spacer(1, 0.22 * inch)]
+
+    # --------------------------------------------------------
+    # 1. STRUCTURES
+    # --------------------------------------------------------
     story.append(Paragraph("1. Molecular Structures", heading_style))
+
     img2d = save_2d_structure_png(mol)
     img3d = save_3d_structure_png(mol)
-    try:
-        if img2d and img3d:
-            structure_table = Table([[Image(img2d, width=3.0*inch, height=2.2*inch),
-                                      Image(img3d, width=3.0*inch, height=2.2*inch)]],
-                                    colWidths=[3.1*inch,3.1*inch])
-            structure_table.setStyle(TableStyle([("VALIGN",(0,0),(-1,-1),"MIDDLE")]))
-            story += [structure_table, Paragraph("Left: 2D molecular structure &nbsp;&nbsp;&nbsp; Right: generated 3D molecular structure", body_style)]
-        elif img2d:
-            story.append(Image(img2d, width=5.5*inch, height=3.9*inch))
-    finally:
-        pass
-    story += [Spacer(1,0.2*inch)]
 
-    story.append(Paragraph("2. Complete Molecular Properties", heading_style))
-    prop_data = [["Property", "Value"]]
-    for k,v in properties.items(): prop_data.append([k, str(v)])
-    pt = Table(prop_data, colWidths=[3.5*inch,2.7*inch], repeatRows=1)
-    pt.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),HexColor("#2F5597")),
-                            ("TEXTCOLOR",(0,0),(-1,0),colors.white),
-                            ("GRID",(0,0),(-1,-1),0.5,colors.grey),
-                            ("VALIGN",(0,0),(-1,-1),"TOP"),
-                            ("PADDING",(0,0),(-1,-1),5)]))
-    story += [pt, Spacer(1,0.2*inch)]
+    if img2d and img3d:
+        structure_table = Table(
+            [[
+                Image(img2d, width=3.15 * inch, height=2.25 * inch),
+                Image(img3d, width=3.15 * inch, height=2.25 * inch)
+            ]],
+            colWidths=[3.3 * inch, 3.3 * inch]
+        )
 
-    story.append(Paragraph("3. Interpretation", heading_style))
-    story.append(Paragraph(
-        "This personalized report was generated from the student's submitted SMILES notation. "
-        "The application converted the molecular representation into a validated chemical structure, "
-        "calculated physicochemical descriptors and bond information, and generated both 2D and 3D molecular representations using RDKit.",
-        body_style))
+        structure_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER")
+        ]))
 
-    story += [Spacer(1,0.2*inch), Paragraph("Developed by Dr. R. Subramanian, Assistant Professor, Division of Chemistry, School of Sciences, Faculty of Engineering and Technology, SRM Institute of Science and Technology, Tiruchirappalli.", body_style)]
-    story.append(Paragraph("For queries: rsmani84@gmail.com", body_style))
+        story += [
+            structure_table,
+            Spacer(1, 0.08 * inch),
+            Paragraph(
+                "<b>Figure 1.</b> Left: 2D molecular connectivity. "
+                "Right: generated 3D ball-and-stick geometry showing the spatial arrangement of atoms.",
+                body_style
+            )
+        ]
+
+    elif img2d:
+        story.append(Image(img2d, width=5.8 * inch, height=4.1 * inch))
+
+    story += [Spacer(1, 0.18 * inch)]
+
+    # --------------------------------------------------------
+    # 2. COMPLETE PROPERTIES WITH INTERPRETATION COLUMN
+    # --------------------------------------------------------
+    story.append(Paragraph("2. Complete Molecular Properties and Interpretation", heading_style))
+
+    prop_data = [[
+        Paragraph("<b>Property</b>", header_style),
+        Paragraph("<b>Value</b>", header_style),
+        Paragraph("<b>Interpretation</b>", header_style)
+    ]]
+
+    for key, value in properties.items():
+        interpretation = get_property_interpretation(key, value, properties)
+        prop_data.append([
+            Paragraph(str(key), small_style),
+            Paragraph(str(value), small_style),
+            Paragraph(interpretation, small_style)
+        ])
+
+    property_table = Table(
+        prop_data,
+        colWidths=[1.75 * inch, 1.0 * inch, 3.85 * inch],
+        repeatRows=1
+    )
+
+    property_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), HexColor("#2F5597")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.grey),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("PADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4)
+    ]))
+
+    story += [property_table, Spacer(1, 0.18 * inch)]
+
+    # --------------------------------------------------------
+    # 3. POINT-WISE INTERPRETATION
+    # --------------------------------------------------------
+    story.append(Paragraph("3. Point-wise Molecular Interpretation", heading_style))
+
+    intro = (
+        "The following points summarize the most important structural and "
+        "physicochemical features calculated from the student's submitted SMILES."
+    )
+    story.append(Paragraph(intro, body_style))
+    story.append(Spacer(1, 0.08 * inch))
+
+    for point in build_key_interpretation_points(properties):
+        story.append(Paragraph(point, body_style))
+        story.append(Spacer(1, 0.06 * inch))
+
+    # --------------------------------------------------------
+    # 4. LEARNING NOTE
+    # --------------------------------------------------------
+    story += [
+        Spacer(1, 0.12 * inch),
+        Paragraph("4. Learning Note", heading_style),
+        Paragraph(
+            "The numerical descriptors in this report are computationally calculated "
+            "from the submitted molecular structure. They are useful for molecular "
+            "comparison and cheminformatics learning, but experimental measurements "
+            "may differ depending on conditions and methodology.",
+            body_style
+        )
+    ]
 
     doc.build(story)
-    pdf_data = buffer.getvalue(); buffer.close()
+
+    pdf_data = buffer.getvalue()
+    buffer.close()
+
     for path in [img2d, img3d]:
         if path and os.path.exists(path):
-            try: os.remove(path)
-            except Exception: pass
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
     return pdf_data
 
 
