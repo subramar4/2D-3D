@@ -3,12 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from rdkit import Chem
-from rdkit.Chem import Draw
-from rdkit.Chem import AllChem
-from rdkit.Chem import Descriptors
-from rdkit.Chem import Crippen
-from rdkit.Chem import Lipinski
-from rdkit.Chem import rdMolDescriptors
+from rdkit.Chem import Draw, AllChem
+from rdkit.Chem import Descriptors, Crippen, Lipinski, rdMolDescriptors
 
 import py3Dmol
 import streamlit.components.v1 as components
@@ -16,6 +12,7 @@ import streamlit.components.v1 as components
 
 # ============================================================
 # PAGE CONFIGURATION
+# IMPORTANT: Use ONLY ONCE
 # ============================================================
 
 st.set_page_config(
@@ -26,12 +23,36 @@ st.set_page_config(
 
 
 # ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def get_molecule(smiles):
+    """Convert SMILES to RDKit molecule safely."""
+    if not smiles or not smiles.strip():
+        return None
+    return Chem.MolFromSmiles(smiles.strip())
+
+
+def calculate_properties(mol):
+    """Calculate important molecular descriptors."""
+
+    return {
+        "Molecular Weight": round(Descriptors.MolWt(mol), 2),
+        "LogP": round(Crippen.MolLogP(mol), 2),
+        "TPSA": round(rdMolDescriptors.CalcTPSA(mol), 2),
+        "HBD": Lipinski.NumHDonors(mol),
+        "HBA": Lipinski.NumHAcceptors(mol),
+        "Rotatable Bonds": Lipinski.NumRotatableBonds(mol),
+        "Ring Count": Lipinski.RingCount(mol),
+        "Molecular Formula": rdMolDescriptors.CalcMolFormula(mol)
+    }
+
+
+# ============================================================
 # SIDEBAR NAVIGATION
 # ============================================================
 
 st.sidebar.title("🧪 Virtual Lab")
-
-st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
@@ -42,10 +63,11 @@ page = st.sidebar.radio(
         "📊 Molecular Descriptors",
         "📈 Structure–Property Analysis",
         "📝 Assessment"
-    ]
+    ],
+    key="main_navigation"
 )
 
-st.sidebar.markdown("---")
+st.sidebar.divider()
 
 st.sidebar.info("""
 ### Learning Objectives
@@ -58,6 +80,10 @@ st.sidebar.info("""
 
 • Structure–property relationships
 """)
+
+st.sidebar.divider()
+
+st.sidebar.caption("🧪 Cheminformatics Virtual Laboratory")
 
 
 # ============================================================
@@ -76,81 +102,68 @@ if page == "🏠 Home":
     st.divider()
 
     st.markdown("""
-    ## Welcome to the Virtual Laboratory
+## Welcome to the Virtual Laboratory
 
-    This experiment introduces students to the fundamental concepts
-    of **Cheminformatics** using computational tools.
+This experiment introduces students to the fundamental concepts of
+**Cheminformatics** using computational tools.
 
-    Students will learn how to represent chemical structures using
-    **SMILES notation**, visualize molecules in **2D and 3D**, calculate
-    important molecular descriptors, and investigate
-    **structure–property relationships**.
-    """)
+Students will learn how to represent chemical structures using
+**SMILES notation**, visualize molecules in **2D and 3D**, calculate
+important molecular descriptors, and investigate
+**structure–property relationships**.
+""")
 
     st.markdown("## 🎯 Learning Objectives")
 
-    st.success("""
-    ### 1. Molecular Representation
+    col1, col2 = st.columns(2)
 
-    Convert molecular representations using **SMILES notation**.
-    """)
+    with col1:
 
-    st.success("""
-    ### 2. Molecular Visualization
+        st.success("""
+### 1. Molecular Representation
 
-    Visualize chemical structures in **2D and 3D**.
-    """)
+Convert molecular representations using **SMILES notation**.
+""")
 
-    st.success("""
-    ### 3. Molecular Descriptor Calculation
+        st.success("""
+### 2. Molecular Visualization
 
-    Calculate important molecular descriptors:
+Visualize chemical structures in **2D and 3D**.
+""")
 
-    - Molecular Weight
-    - LogP
-    - TPSA
-    - Hydrogen Bond Donors (HBD)
-    - Hydrogen Bond Acceptors (HBA)
-    """)
+    with col2:
 
-    st.success("""
-    ### 4. Structure–Property Relationships
+        st.success("""
+### 3. Molecular Descriptor Calculation
 
-    Understand how molecular structure influences physical and
-    chemical properties using computational methods.
-    """)
+Calculate Molecular Weight, LogP, TPSA, HBD and HBA.
+""")
+
+        st.success("""
+### 4. Structure–Property Relationships
+
+Understand how molecular structure influences chemical properties.
+""")
+
+    st.divider()
 
     st.markdown("## 🔬 Virtual Laboratory Workflow")
 
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.info("""
-        ### Step 1
-
-        📖 Learn Theory
-        """)
+        st.info("### Step 1\n\n📖 Learn Theory")
 
     with col2:
-        st.info("""
-        ### Step 2
-
-        🧬 Enter SMILES
-        """)
+        st.info("### Step 2\n\n🧬 Enter SMILES")
 
     with col3:
-        st.info("""
-        ### Step 3
-
-        📊 Calculate Properties
-        """)
+        st.info("### Step 3\n\n📊 Calculate Properties")
 
     with col4:
-        st.info("""
-        ### Step 4
+        st.info("### Step 4\n\n📈 Analyze Results")
 
-        📈 Analyze Results
-        """)
+    st.divider()
 
     st.markdown("## 🧪 Example Molecules")
 
@@ -161,7 +174,6 @@ if page == "🏠 Home":
             "Acetic Acid",
             "Caffeine"
         ],
-
         "SMILES": [
             "CCO",
             "c1ccccc1",
@@ -186,57 +198,57 @@ elif page == "📖 Theory":
     st.title("📖 Theory: Introduction to Cheminformatics")
 
     st.markdown("""
-    ## What is Cheminformatics?
+## What is Cheminformatics?
 
-    **Cheminformatics** is a scientific field that combines:
+**Cheminformatics** is a scientific field that combines:
 
-    - Chemistry ⚗️
-    - Computer Science 💻
-    - Data Analysis 📊
+- Chemistry ⚗️
+- Computer Science 💻
+- Data Analysis 📊
 
-    It uses computational methods to store, represent, visualize,
-    analyze and predict chemical information.
-    """)
+It uses computational methods to store, represent, visualize,
+analyze and predict chemical information.
+""")
 
-    st.markdown("## 🧬 Molecular Representation")
+    st.divider()
 
     st.markdown("""
-    Molecules can be represented in several ways.
+## 🧬 Molecular Representation
 
-    ### Molecular Formula
+Molecules can be represented in several ways.
 
-    Shows the number of atoms.
+### Molecular Formula
 
-    Example:
+Shows the number and type of atoms.
 
-    **Ethanol → C₂H₆O**
+Example:
 
-    ### Structural Formula
+**Ethanol → C₂H₆O**
 
-    Shows how atoms are connected.
+### Structural Formula
 
-    Example:
+Shows how atoms are connected.
 
-    **CH₃–CH₂–OH**
+Example:
 
-    ### SMILES Notation
+**CH₃–CH₂–OH**
 
-    SMILES stands for:
+### SMILES Notation
 
-    **Simplified Molecular Input Line Entry System**
+SMILES stands for:
 
-    It represents a molecular structure as text.
-    """)
+**Simplified Molecular Input Line Entry System**
+
+It represents a molecular structure as text.
+""")
 
     examples = pd.DataFrame({
-
         "Molecule": [
             "Water",
             "Ethanol",
             "Benzene",
             "Acetic Acid"
         ],
-
         "SMILES": [
             "O",
             "CCO",
@@ -251,35 +263,48 @@ elif page == "📖 Theory":
         hide_index=True
     )
 
-    st.markdown("## 📊 Molecular Descriptors")
+    st.divider()
 
     st.markdown("""
-    Molecular descriptors are numerical values that describe
-    important molecular properties.
+## 📊 Molecular Descriptors
 
-    | Descriptor | Meaning |
-    |---|---|
-    | Molecular Weight | Molecular mass |
-    | LogP | Lipophilicity |
-    | TPSA | Molecular polarity |
-    | HBD | Hydrogen bond donors |
-    | HBA | Hydrogen bond acceptors |
-    """)
+Molecular descriptors are numerical values that describe
+important molecular properties.
+""")
 
-    st.markdown("## 🔬 Structure–Property Relationship")
+    descriptor_table = pd.DataFrame({
+        "Descriptor": [
+            "Molecular Weight",
+            "LogP",
+            "TPSA",
+            "HBD",
+            "HBA"
+        ],
+        "Meaning": [
+            "Molecular mass",
+            "Lipophilicity",
+            "Molecular polarity",
+            "Hydrogen bond donors",
+            "Hydrogen bond acceptors"
+        ]
+    })
+
+    st.table(descriptor_table)
 
     st.markdown("""
-    Changes in molecular structure can influence:
+## 🔬 Structure–Property Relationship
 
-    - Molecular weight
-    - Polarity
-    - Solubility
-    - Lipophilicity
-    - Hydrogen bonding ability
+Changes in molecular structure can influence:
 
-    Functional groups and molecular size are important factors
-    controlling these properties.
-    """)
+- Molecular weight
+- Polarity
+- Solubility
+- Lipophilicity
+- Hydrogen bonding ability
+
+Functional groups and molecular size are important factors
+controlling these properties.
+""")
 
 
 # ============================================================
@@ -291,9 +316,20 @@ elif page == "🧬 SMILES & Molecular Visualization":
     st.title("🧬 SMILES and Molecular Visualization")
 
     st.markdown("""
-    Enter a valid **SMILES string** and convert it into a
-    chemical structure.
-    """)
+Enter a valid **SMILES string** and convert it into a
+chemical structure.
+""")
+
+    examples_dict = {
+        "Ethanol": "CCO",
+        "Benzene": "c1ccccc1",
+        "Acetic Acid": "CC(=O)O",
+        "Caffeine": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
+    }
+
+    # Initialize session state
+    if "visualization_smiles" not in st.session_state:
+        st.session_state.visualization_smiles = "CCO"
 
     col1, col2 = st.columns([2, 1])
 
@@ -301,44 +337,31 @@ elif page == "🧬 SMILES & Molecular Visualization":
 
         smiles = st.text_input(
             "Enter SMILES",
-            value="CCO"
+            key="visualization_smiles"
         )
 
     with col2:
 
         example = st.selectbox(
             "Choose an example",
-            [
-                "Ethanol",
-                "Benzene",
-                "Acetic Acid",
-                "Caffeine"
-            ]
+            list(examples_dict.keys()),
+            key="example_selector"
         )
 
-    examples_dict = {
+        if st.button(
+            "Load Example",
+            key="load_example_button"
+        ):
+            st.session_state.visualization_smiles = examples_dict[example]
+            st.rerun()
 
-        "Ethanol": "CCO",
-
-        "Benzene": "c1ccccc1",
-
-        "Acetic Acid": "CC(=O)O",
-
-        "Caffeine":
-        "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
-    }
-
-    if st.button("Load Example"):
-
-        smiles = examples_dict[example]
-
-        st.info(f"Selected SMILES: {smiles}")
-
-    mol = Chem.MolFromSmiles(smiles)
+    mol = get_molecule(st.session_state.visualization_smiles)
 
     if mol is None:
 
-        st.error("❌ Invalid SMILES. Please enter a valid SMILES string.")
+        st.error(
+            "❌ Invalid SMILES. Please enter a valid SMILES string."
+        )
 
     else:
 
@@ -346,9 +369,9 @@ elif page == "🧬 SMILES & Molecular Visualization":
 
         col1, col2 = st.columns(2)
 
-        # -------------------------
+        # ----------------------------------------------------
         # 2D STRUCTURE
-        # -------------------------
+        # ----------------------------------------------------
 
         with col1:
 
@@ -361,19 +384,24 @@ elif page == "🧬 SMILES & Molecular Visualization":
 
             st.image(image)
 
-        # -------------------------
-        # INFORMATION
-        # -------------------------
+        # ----------------------------------------------------
+        # MOLECULAR INFORMATION
+        # ----------------------------------------------------
 
         with col2:
 
             st.subheader("Molecular Information")
 
-            canonical_smiles = Chem.MolToSmiles(mol)
+            properties = calculate_properties(mol)
 
             st.write(
                 "**Canonical SMILES:**",
-                canonical_smiles
+                Chem.MolToSmiles(mol)
+            )
+
+            st.write(
+                "**Molecular Formula:**",
+                properties["Molecular Formula"]
             )
 
             st.write(
@@ -386,69 +414,76 @@ elif page == "🧬 SMILES & Molecular Visualization":
                 mol.GetNumBonds()
             )
 
-            st.write(
-                "**Molecular formula:**",
-                rdMolDescriptors.CalcMolFormula(mol)
-            )
-
         st.divider()
 
-        # -------------------------
+        # ----------------------------------------------------
         # 3D VISUALIZATION
-        # -------------------------
+        # ----------------------------------------------------
 
         st.subheader("🌐 3D Molecular Visualization")
 
-        if st.button("Generate 3D Structure"):
+        if st.button(
+            "Generate 3D Structure",
+            key="generate_3d_button"
+        ):
 
-            mol3d = Chem.AddHs(mol)
-
-            status = AllChem.EmbedMolecule(
-                mol3d,
-                randomSeed=42
-            )
-
-            if status == 0:
+            with st.spinner("Generating 3D molecular structure..."):
 
                 try:
 
-                    AllChem.MMFFOptimizeMolecule(mol3d)
+                    mol3d = Chem.AddHs(mol)
 
-                except Exception:
+                    status = AllChem.EmbedMolecule(
+                        mol3d,
+                        randomSeed=42
+                    )
 
-                    pass
+                    if status == 0:
 
-                mol_block = Chem.MolToMolBlock(mol3d)
+                        try:
+                            AllChem.MMFFOptimizeMolecule(mol3d)
 
-                view = py3Dmol.view(
-                    width=900,
-                    height=500
-                )
+                        except Exception:
+                            pass
 
-                view.addModel(
-                    mol_block,
-                    "mol"
-                )
+                        mol_block = Chem.MolToMolBlock(mol3d)
 
-                view.setStyle(
-                    {"stick": {}}
-                )
+                        view = py3Dmol.view(
+                            width=900,
+                            height=500
+                        )
 
-                view.setBackgroundColor("white")
+                        view.addModel(
+                            mol_block,
+                            "mol"
+                        )
 
-                view.zoomTo()
+                        view.setStyle({
+                            "stick": {}
+                        })
 
-                components.html(
-                    view._make_html(),
-                    height=520,
-                    scrolling=False
-                )
+                        view.setBackgroundColor("white")
 
-            else:
+                        view.zoomTo()
 
-                st.warning(
-                    "Unable to generate a 3D structure."
-                )
+                        components.html(
+                            view._make_html(),
+                            height=520,
+                            scrolling=False
+                        )
+
+                    else:
+
+                        st.warning(
+                            "Unable to generate a 3D structure "
+                            "for this molecule."
+                        )
+
+                except Exception as e:
+
+                    st.error(
+                        f"Error generating 3D structure: {e}"
+                    )
 
 
 # ============================================================
@@ -460,16 +495,17 @@ elif page == "📊 Molecular Descriptors":
     st.title("📊 Molecular Descriptor Calculator")
 
     st.markdown("""
-    Calculate important physicochemical descriptors from a
-    molecular SMILES representation.
-    """)
+Calculate important physicochemical descriptors from a
+molecular SMILES representation.
+""")
 
     smiles = st.text_input(
         "Enter Molecular SMILES",
-        value="CCO"
+        value="CCO",
+        key="descriptor_smiles"
     )
 
-    mol = Chem.MolFromSmiles(smiles)
+    mol = get_molecule(smiles)
 
     if mol is None:
 
@@ -477,82 +513,65 @@ elif page == "📊 Molecular Descriptors":
 
     else:
 
-        # -------------------------
-        # CALCULATIONS
-        # -------------------------
+        properties = calculate_properties(mol)
 
-        molecular_weight = round(
-            Descriptors.MolWt(mol),
-            2
-        )
-
-        logp = round(
-            Crippen.MolLogP(mol),
-            2
-        )
-
-        tpsa = round(
-            rdMolDescriptors.CalcTPSA(mol),
-            2
-        )
-
-        hbd = Lipinski.NumHDonors(mol)
-
-        hba = Lipinski.NumHAcceptors(mol)
-
-        # -------------------------
+        # ----------------------------------------------------
         # METRICS
-        # -------------------------
+        # ----------------------------------------------------
 
         col1, col2, col3, col4, col5 = st.columns(5)
 
         col1.metric(
             "Molecular Weight",
-            molecular_weight
+            properties["Molecular Weight"]
         )
 
         col2.metric(
             "LogP",
-            logp
+            properties["LogP"]
         )
 
         col3.metric(
             "TPSA",
-            tpsa
+            properties["TPSA"]
         )
 
         col4.metric(
             "HBD",
-            hbd
+            properties["HBD"]
         )
 
         col5.metric(
             "HBA",
-            hba
+            properties["HBA"]
         )
 
         st.divider()
 
-        # -------------------------
+        # ----------------------------------------------------
         # TABLE
-        # -------------------------
+        # ----------------------------------------------------
 
         descriptor_data = pd.DataFrame({
-
             "Descriptor": [
                 "Molecular Weight",
                 "LogP",
                 "TPSA",
                 "Hydrogen Bond Donors",
-                "Hydrogen Bond Acceptors"
+                "Hydrogen Bond Acceptors",
+                "Rotatable Bonds",
+                "Ring Count",
+                "Molecular Formula"
             ],
-
             "Value": [
-                molecular_weight,
-                logp,
-                tpsa,
-                hbd,
-                hba
+                properties["Molecular Weight"],
+                properties["LogP"],
+                properties["TPSA"],
+                properties["HBD"],
+                properties["HBA"],
+                properties["Rotatable Bonds"],
+                properties["Ring Count"],
+                properties["Molecular Formula"]
             ]
         })
 
@@ -564,13 +583,15 @@ elif page == "📊 Molecular Descriptors":
             hide_index=True
         )
 
-        # -------------------------
+        st.divider()
+
+        # ----------------------------------------------------
         # INTERPRETATION
-        # -------------------------
+        # ----------------------------------------------------
 
         st.subheader("🔍 Interpretation")
 
-        if logp > 3:
+        if properties["LogP"] > 3:
 
             st.warning(
                 "Higher LogP suggests greater lipophilicity."
@@ -582,10 +603,24 @@ elif page == "📊 Molecular Descriptors":
                 "The molecule has low to moderate lipophilicity."
             )
 
-        if tpsa > 90:
+        if properties["TPSA"] > 90:
 
             st.info(
                 "Higher TPSA indicates a relatively polar molecule."
+            )
+
+        if properties["HBD"] > 0:
+
+            st.success(
+                f"The molecule contains "
+                f"{properties['HBD']} hydrogen bond donor(s)."
+            )
+
+        if properties["HBA"] > 0:
+
+            st.success(
+                f"The molecule contains "
+                f"{properties['HBA']} hydrogen bond acceptor(s)."
             )
 
 
@@ -598,9 +633,9 @@ elif page == "📈 Structure–Property Analysis":
     st.title("📈 Structure–Property Relationship Analysis")
 
     st.markdown("""
-    Compare multiple molecules to investigate how differences in
-    chemical structure influence molecular properties.
-    """)
+Compare multiple molecules to investigate how differences in
+chemical structure influence molecular properties.
+""")
 
     default_molecules = """Ethanol,CCO
 Benzene,c1ccccc1
@@ -611,51 +646,58 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
     molecule_input = st.text_area(
         "Enter molecules as: Name,SMILES",
         value=default_molecules,
-        height=200
+        height=200,
+        key="molecule_analysis_input"
     )
 
     rows = []
+    invalid_molecules = []
 
     for line in molecule_input.strip().splitlines():
 
-        if "," in line:
+        line = line.strip()
 
-            name, smiles = line.split(",", 1)
+        if not line:
+            continue
 
-            mol = Chem.MolFromSmiles(
-                smiles.strip()
+        if "," not in line:
+
+            invalid_molecules.append(line)
+            continue
+
+        name, smiles = line.split(",", 1)
+
+        mol = get_molecule(smiles)
+
+        if mol is not None:
+
+            properties = calculate_properties(mol)
+
+            rows.append({
+                "Molecule": name.strip(),
+                "SMILES": Chem.MolToSmiles(mol),
+                "MW": properties["Molecular Weight"],
+                "LogP": properties["LogP"],
+                "TPSA": properties["TPSA"],
+                "HBD": properties["HBD"],
+                "HBA": properties["HBA"],
+                "Rotatable Bonds": properties["Rotatable Bonds"]
+            })
+
+        else:
+
+            invalid_molecules.append(
+                f"{name.strip()} ({smiles.strip()})"
             )
 
-            if mol is not None:
+    if invalid_molecules:
 
-                rows.append({
-
-                    "Molecule": name.strip(),
-
-                    "MW":
-                    round(
-                        Descriptors.MolWt(mol),
-                        2
-                    ),
-
-                    "LogP":
-                    round(
-                        Crippen.MolLogP(mol),
-                        2
-                    ),
-
-                    "TPSA":
-                    round(
-                        rdMolDescriptors.CalcTPSA(mol),
-                        2
-                    ),
-
-                    "HBD":
-                    Lipinski.NumHDonors(mol),
-
-                    "HBA":
-                    Lipinski.NumHAcceptors(mol)
-                })
+        st.warning(
+            "Some entries could not be processed:\n\n"
+            + "\n".join(
+                [f"- {item}" for item in invalid_molecules]
+            )
+        )
 
     if rows:
 
@@ -673,12 +715,13 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
 
         st.subheader("📈 Property Comparison Graph")
 
-        properties = [
+        properties_list = [
             "MW",
             "LogP",
             "TPSA",
             "HBD",
-            "HBA"
+            "HBA",
+            "Rotatable Bonds"
         ]
 
         col1, col2 = st.columns(2)
@@ -687,19 +730,21 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
 
             x_axis = st.selectbox(
                 "Select X-axis",
-                properties,
-                index=0
+                properties_list,
+                index=0,
+                key="analysis_x_axis"
             )
 
         with col2:
 
             y_axis = st.selectbox(
                 "Select Y-axis",
-                properties,
-                index=1
+                properties_list,
+                index=1,
+                key="analysis_y_axis"
             )
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(8, 5))
 
         ax.scatter(
             df[x_axis],
@@ -710,41 +755,50 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
         for _, row in df.iterrows():
 
             ax.annotate(
-
                 row["Molecule"],
-
                 (
                     row[x_axis],
                     row[y_axis]
-                )
+                ),
+                xytext=(5, 5),
+                textcoords="offset points"
             )
 
         ax.set_xlabel(x_axis)
-
         ax.set_ylabel(y_axis)
+        ax.set_title(f"{x_axis} vs {y_axis}")
 
-        ax.set_title(
-            f"{x_axis} vs {y_axis}"
-        )
+        ax.grid(True, alpha=0.3)
 
         st.pyplot(fig)
+
+        plt.close(fig)
+
+        st.divider()
 
         st.subheader("🧠 Student Observation")
 
         st.markdown("""
-        Based on your analysis, answer:
+Based on your analysis, answer:
 
-        1. Which molecule has the highest molecular weight?
+1. Which molecule has the highest molecular weight?
 
-        2. Which molecule has the highest LogP?
+2. Which molecule has the highest LogP?
 
-        3. Which molecule has the highest TPSA?
+3. Which molecule has the highest TPSA?
 
-        4. How do functional groups influence HBD and HBA?
+4. How do functional groups influence HBD and HBA?
 
-        5. What relationship do you observe between molecular
-        structure and molecular properties?
-        """)
+5. What relationship do you observe between molecular
+structure and molecular properties?
+""")
+
+    else:
+
+        st.error(
+            "No valid molecules were found. "
+            "Please enter molecules in the format: Name,SMILES"
+        )
 
 
 # ============================================================
@@ -756,14 +810,15 @@ elif page == "📝 Assessment":
     st.title("📝 Virtual Lab Assessment")
 
     st.markdown("""
-    Test your understanding of the Cheminformatics experiment.
-    """)
+Test your understanding of the Cheminformatics experiment.
+""")
+
+    st.divider()
 
     questions = [
 
         {
-            "question":
-            "What does SMILES represent?",
+            "question": "What does SMILES represent?",
 
             "options": [
                 "A molecular text representation",
@@ -772,13 +827,12 @@ elif page == "📝 Assessment":
                 "A laboratory instrument"
             ],
 
-            "answer":
-            "A molecular text representation"
+            "answer": "A molecular text representation"
         },
 
         {
             "question":
-            "Which descriptor is associated with lipophilicity?",
+                "Which descriptor is associated with lipophilicity?",
 
             "options": [
                 "TPSA",
@@ -787,13 +841,11 @@ elif page == "📝 Assessment":
                 "HBA"
             ],
 
-            "answer":
-            "LogP"
+            "answer": "LogP"
         },
 
         {
-            "question":
-            "TPSA is mainly related to:",
+            "question": "TPSA is mainly related to:",
 
             "options": [
                 "Molecular polarity",
@@ -802,13 +854,11 @@ elif page == "📝 Assessment":
                 "Temperature"
             ],
 
-            "answer":
-            "Molecular polarity"
+            "answer": "Molecular polarity"
         },
 
         {
-            "question":
-            "HBD stands for:",
+            "question": "HBD stands for:",
 
             "options": [
                 "Hydrogen Bond Donor",
@@ -817,13 +867,12 @@ elif page == "📝 Assessment":
                 "Heavy Bond Donor"
             ],
 
-            "answer":
-            "Hydrogen Bond Donor"
+            "answer": "Hydrogen Bond Donor"
         },
 
         {
             "question":
-            "Which Python toolkit is used in this virtual lab?",
+                "Which Python toolkit is used in this virtual lab?",
 
             "options": [
                 "RDKit",
@@ -832,8 +881,7 @@ elif page == "📝 Assessment":
                 "Photoshop"
             ],
 
-            "answer":
-            "RDKit"
+            "answer": "RDKit"
         }
     ]
 
@@ -842,17 +890,19 @@ elif page == "📝 Assessment":
     for i, item in enumerate(questions):
 
         answer = st.radio(
-
-            f"{i+1}. {item['question']}",
-
+            f"{i + 1}. {item['question']}",
             item["options"],
-
-            key=f"question_{i}"
+            key=f"assessment_question_{i}"
         )
 
         answers.append(answer)
 
-    if st.button("Submit Assessment"):
+    st.divider()
+
+    if st.button(
+        "Submit Assessment",
+        key="submit_assessment_button"
+    ):
 
         score = 0
 
@@ -865,8 +915,6 @@ elif page == "📝 Assessment":
         percentage = (
             score / len(questions)
         ) * 100
-
-        st.divider()
 
         st.success(
             f"Score: {score}/{len(questions)}"
@@ -882,13 +930,15 @@ elif page == "📝 Assessment":
             st.balloons()
 
             st.success(
-                "🎉 Excellent! You successfully completed the virtual laboratory."
+                "🎉 Excellent! You successfully completed "
+                "the virtual laboratory."
             )
 
         elif percentage >= 60:
 
             st.info(
-                "👍 Good work! Review the experiment to improve your understanding."
+                "👍 Good work! Review the experiment to improve "
+                "your understanding."
             )
 
         else:
@@ -896,4 +946,3 @@ elif page == "📝 Assessment":
             st.warning(
                 "Please review the theory and repeat the experiment."
             )
-```
