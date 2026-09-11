@@ -3,14 +3,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from io import BytesIO
 
+# RDKit
 from rdkit import Chem
-from rdkit.Chem import Draw, AllChem
-from rdkit.Chem import Descriptors, Crippen, Lipinski, rdMolDescriptors
+from rdkit.Chem import (
+    Draw,
+    AllChem,
+    Descriptors,
+    Crippen,
+    Lipinski,
+    rdMolDescriptors
+)
 
+# 3D Visualization
 import py3Dmol
 import streamlit.components.v1 as components
 
-# PDF GENERATION
+# PDF
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -22,7 +30,8 @@ from reportlab.platypus import (
     Spacer,
     Table,
     TableStyle,
-    PageBreak
+    PageBreak,
+    Image
 )
 from reportlab.lib.units import inch
 
@@ -39,43 +48,494 @@ st.set_page_config(
 
 
 # ============================================================
+# CUSTOM CSS
+# ============================================================
+
+st.markdown("""
+<style>
+
+.main-title {
+    text-align: center;
+    font-size: 40px;
+    font-weight: bold;
+}
+
+.section-title {
+    font-size: 25px;
+    font-weight: bold;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
 def get_molecule(smiles):
-    """Convert SMILES to RDKit molecule safely."""
+    """Convert SMILES into an RDKit molecule."""
 
     if not smiles or not smiles.strip():
         return None
 
     try:
-        return Chem.MolFromSmiles(smiles.strip())
+        mol = Chem.MolFromSmiles(smiles.strip())
+        return mol
+
     except Exception:
         return None
 
 
-def calculate_properties(mol):
-    """Calculate molecular descriptors."""
+# ============================================================
+# CALCULATE COMPLETE MOLECULAR PROPERTIES
+# ============================================================
 
-    return {
-        "Molecular Weight": round(Descriptors.MolWt(mol), 2),
-        "LogP": round(Crippen.MolLogP(mol), 2),
-        "TPSA": round(rdMolDescriptors.CalcTPSA(mol), 2),
-        "HBD": Lipinski.NumHDonors(mol),
-        "HBA": Lipinski.NumHAcceptors(mol),
+def calculate_properties(mol):
+
+    molecular_formula = rdMolDescriptors.CalcMolFormula(mol)
+
+    properties = {
+
+        "Molecular Formula": molecular_formula,
+
+        "Molecular Weight": round(
+            Descriptors.MolWt(mol),
+            3
+        ),
+
+        "Exact Molecular Weight": round(
+            Descriptors.ExactMolWt(mol),
+            4
+        ),
+
+        "LogP": round(
+            Crippen.MolLogP(mol),
+            3
+        ),
+
+        "TPSA": round(
+            rdMolDescriptors.CalcTPSA(mol),
+            3
+        ),
+
+        "Hydrogen Bond Donors": Lipinski.NumHDonors(mol),
+
+        "Hydrogen Bond Acceptors": Lipinski.NumHAcceptors(mol),
+
         "Rotatable Bonds": Lipinski.NumRotatableBonds(mol),
+
         "Ring Count": Lipinski.RingCount(mol),
-        "Molecular Formula": rdMolDescriptors.CalcMolFormula(mol)
+
+        "Aromatic Rings": rdMolDescriptors.CalcNumAromaticRings(mol),
+
+        "Aliphatic Rings": rdMolDescriptors.CalcNumAliphaticRings(mol),
+
+        "Number of Atoms": mol.GetNumAtoms(),
+
+        "Heavy Atoms": mol.GetNumHeavyAtoms(),
+
+        "Number of Bonds": mol.GetNumBonds(),
+
+        "Fraction Csp3": round(
+            rdMolDescriptors.CalcFractionCSP3(mol),
+            3
+        ),
+
+        "Molar Refractivity": round(
+            Crippen.MolMR(mol),
+            3
+        )
     }
+
+    return properties
 
 
 # ============================================================
-# PDF REPORT GENERATOR
+# GENERATE 2D IMAGE
+# ============================================================
+
+def generate_2d_image(mol):
+
+    image = Draw.MolToImage(
+        mol,
+        size=(700, 500)
+    )
+
+    return image
+
+
+# ============================================================
+# GENERATE 3D MOLECULE
+# ============================================================
+
+def generate_3d_molecule(mol):
+
+    try:
+
+        mol3d = Chem.AddHs(mol)
+
+        params = AllChem.ETKDGv3()
+
+        params.randomSeed = 42
+
+        status = AllChem.EmbedMolecule(
+            mol3d,
+            params
+        )
+
+        if status != 0:
+            return None
+
+        try:
+
+            AllChem.MMFFOptimizeMolecule(
+                mol3d
+            )
+
+        except Exception:
+
+            try:
+
+                AllChem.UFFOptimizeMolecule(
+                    mol3d
+                )
+
+            except Exception:
+                pass
+
+        return mol3d
+
+    except Exception:
+
+        return None
+
+
+# ============================================================
+# DISPLAY 3D STRUCTURE
+# ============================================================
+
+def display_3d_structure(mol3d, style, show_surface=False):
+
+    mol_block = Chem.MolToMolBlock(mol3d)
+
+    view = py3Dmol.view(
+        width=900,
+        height=600
+    )
+
+    view.addModel(
+        mol_block,
+        "mol"
+    )
+
+    # --------------------------------------------------------
+    # BALL AND STICK
+    # --------------------------------------------------------
+
+    if style == "Ball and Stick":
+
+        view.setStyle({
+
+            "stick": {
+                "radius": 0.15
+            },
+
+            "sphere": {
+                "scale": 0.30
+            }
+
+        })
+
+    # --------------------------------------------------------
+    # STICK
+    # --------------------------------------------------------
+
+    elif style == "Stick":
+
+        view.setStyle({
+
+            "stick": {
+                "radius": 0.20
+            }
+
+        })
+
+    # --------------------------------------------------------
+    # SPACE FILLING
+    # --------------------------------------------------------
+
+    elif style == "Space Filling":
+
+        view.setStyle({
+
+            "sphere": {
+                "scale": 1.0
+            }
+
+        })
+
+    # --------------------------------------------------------
+    # WIREFRAME
+    # --------------------------------------------------------
+
+    elif style == "Wireframe":
+
+        view.setStyle({
+
+            "line": {
+                "linewidth": 2
+            }
+
+        })
+
+    # --------------------------------------------------------
+    # CARTOON STYLE
+    # --------------------------------------------------------
+
+    elif style == "Cartoon":
+
+        # Cartoon is mainly useful for biomolecules,
+        # but this provides a molecular representation.
+
+        view.setStyle({
+
+            "stick": {},
+
+            "sphere": {
+                "scale": 0.20
+            }
+
+        })
+
+    # --------------------------------------------------------
+    # OPTIONAL SURFACE
+    # --------------------------------------------------------
+
+    if show_surface:
+
+        view.addSurface(
+            py3Dmol.VDW,
+            {
+                "opacity": 0.7
+            }
+        )
+
+    view.setBackgroundColor("white")
+
+    view.zoomTo()
+
+    html = view._make_html()
+
+    components.html(
+        html,
+        height=620
+    )
+
+
+# ============================================================
+# CREATE MOLECULAR PDF REPORT
+# ============================================================
+
+def generate_molecule_pdf(
+    input_smiles,
+    mol,
+    properties
+):
+
+    buffer = BytesIO()
+
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=45,
+        rightMargin=45,
+        topMargin=45,
+        bottomMargin=45
+    )
+
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        "TitleStyle",
+        parent=styles["Title"],
+        fontSize=20,
+        alignment=TA_CENTER,
+        textColor=HexColor("#17365D")
+    )
+
+    heading_style = ParagraphStyle(
+        "HeadingStyle",
+        parent=styles["Heading1"],
+        fontSize=14,
+        textColor=HexColor("#17365D")
+    )
+
+    body_style = ParagraphStyle(
+        "BodyStyle",
+        parent=styles["BodyText"],
+        fontSize=10,
+        leading=14,
+        alignment=TA_JUSTIFY
+    )
+
+    story = []
+
+    story.append(
+        Paragraph(
+            "MOLECULAR PROPERTIES REPORT",
+            title_style
+        )
+    )
+
+    story.append(
+        Spacer(1, 0.3 * inch)
+    )
+
+    # --------------------------------------------------------
+    # BASIC INFORMATION
+    # --------------------------------------------------------
+
+    story.append(
+        Paragraph(
+            "1. Molecular Information",
+            heading_style
+        )
+    )
+
+    canonical_smiles = Chem.MolToSmiles(mol)
+
+    basic_data = [
+
+        ["Property", "Value"],
+
+        ["Input SMILES", input_smiles],
+
+        ["Canonical SMILES", canonical_smiles],
+
+        [
+            "Molecular Formula",
+            properties["Molecular Formula"]
+        ]
+    ]
+
+    basic_table = Table(
+        basic_data,
+        colWidths=[2 * inch, 4 * inch]
+    )
+
+    basic_table.setStyle(
+        TableStyle([
+
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#17365D")),
+
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+
+            ("PADDING", (0, 0), (-1, -1), 7)
+
+        ])
+    )
+
+    story.append(basic_table)
+
+    story.append(
+        Spacer(1, 0.3 * inch)
+    )
+
+    # --------------------------------------------------------
+    # PROPERTY TABLE
+    # --------------------------------------------------------
+
+    story.append(
+        Paragraph(
+            "2. Molecular Properties",
+            heading_style
+        )
+    )
+
+    property_data = [
+        ["Property", "Value"]
+    ]
+
+    for key, value in properties.items():
+
+        property_data.append(
+            [key, str(value)]
+        )
+
+    property_table = Table(
+        property_data,
+        colWidths=[3 * inch, 3 * inch],
+        repeatRows=1
+    )
+
+    property_table.setStyle(
+        TableStyle([
+
+            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#2F5597")),
+
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+
+            ("PADDING", (0, 0), (-1, -1), 6)
+
+        ])
+    )
+
+    story.append(property_table)
+
+    story.append(
+        Spacer(1, 0.3 * inch)
+    )
+
+    story.append(
+        Paragraph(
+            "3. Interpretation",
+            heading_style
+        )
+    )
+
+    interpretation = """
+    This report was generated automatically using the
+    Cheminformatics Virtual Laboratory. The molecular properties
+    were calculated from the chemical structure represented by
+    the submitted SMILES notation using the RDKit cheminformatics
+    toolkit.
+    """
+
+    story.append(
+        Paragraph(
+            interpretation,
+            body_style
+        )
+    )
+
+    # --------------------------------------------------------
+    # BUILD PDF
+    # --------------------------------------------------------
+
+    doc.build(story)
+
+    pdf_data = buffer.getvalue()
+
+    buffer.close()
+
+    return pdf_data
+
+
+# ============================================================
+# GENERATE GENERAL FINAL PROJECT REPORT
 # ============================================================
 
 def generate_final_report():
 
-    # Create PDF in memory
     buffer = BytesIO()
 
     doc = SimpleDocTemplate(
@@ -90,74 +550,55 @@ def generate_final_report():
     styles = getSampleStyleSheet()
 
     title_style = ParagraphStyle(
-        "CustomTitle",
+        "ProjectTitle",
         parent=styles["Title"],
         fontSize=22,
         leading=28,
         alignment=TA_CENTER,
-        textColor=HexColor("#17365D"),
-        spaceAfter=15
+        textColor=HexColor("#17365D")
     )
 
     subtitle_style = ParagraphStyle(
-        "Subtitle",
+        "ProjectSubtitle",
         parent=styles["Normal"],
         fontSize=13,
         leading=18,
-        alignment=TA_CENTER,
-        spaceAfter=15
+        alignment=TA_CENTER
     )
 
     heading_style = ParagraphStyle(
-        "Heading",
+        "ProjectHeading",
         parent=styles["Heading1"],
         fontSize=16,
         leading=20,
-        textColor=HexColor("#17365D"),
-        spaceBefore=12,
-        spaceAfter=8
-    )
-
-    subheading_style = ParagraphStyle(
-        "SubHeading",
-        parent=styles["Heading2"],
-        fontSize=12,
-        leading=16,
-        textColor=HexColor("#2F5597"),
-        spaceBefore=8,
-        spaceAfter=5
+        textColor=HexColor("#17365D")
     )
 
     body_style = ParagraphStyle(
-        "Body",
+        "ProjectBody",
         parent=styles["BodyText"],
         fontSize=10,
         leading=15,
-        alignment=TA_JUSTIFY,
-        spaceAfter=7
-    )
-
-    bullet_style = ParagraphStyle(
-        "Bullet",
-        parent=body_style,
-        leftIndent=18,
-        firstLineIndent=-10,
-        spaceAfter=4
+        alignment=TA_JUSTIFY
     )
 
     story = []
 
-    # ========================================================
     # COVER PAGE
-    # ========================================================
 
-    story.append(Spacer(1, 1 * inch))
+    story.append(
+        Spacer(1, 1 * inch)
+    )
 
     story.append(
         Paragraph(
             "FINAL PROJECT REPORT",
             subtitle_style
         )
+    )
+
+    story.append(
+        Spacer(1, 0.3 * inch)
     )
 
     story.append(
@@ -168,533 +609,90 @@ def generate_final_report():
     )
 
     story.append(
+        Spacer(1, 0.3 * inch)
+    )
+
+    story.append(
         Paragraph(
-            "A Streamlit-Based Interactive Platform for Molecular "
-            "Representation, Visualization, Descriptor Calculation "
-            "and Structure–Property Analysis",
+            "An Interactive Platform for Molecular Representation, "
+            "Visualization and Molecular Property Analysis",
             subtitle_style
         )
     )
 
-    story.append(Spacer(1, 0.5 * inch))
-
-    cover_data = [
-        ["Project Type", "Interactive Virtual Laboratory"],
-        ["Platform", "Streamlit Community Cloud"],
-        ["Programming Language", "Python"],
-        ["Cheminformatics Toolkit", "RDKit"],
-        ["Visualization", "RDKit 2D and py3Dmol 3D"]
-    ]
-
-    cover_table = Table(
-        cover_data,
-        colWidths=[2.1 * inch, 3.5 * inch]
-    )
-
-    cover_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (0, -1), HexColor("#D9EAF7")),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("PADDING", (0, 0), (-1, -1), 8)
-        ])
-    )
-
-    story.append(cover_table)
-
-    story.append(PageBreak())
-
-    # ========================================================
-    # ABSTRACT
-    # ========================================================
-
     story.append(
-        Paragraph(
+        PageBreak()
+    )
+
+    sections = [
+
+        (
             "1. Abstract",
-            heading_style
-        )
-    )
 
-    story.append(
-        Paragraph(
-            "The Cheminformatics Virtual Laboratory was developed as an "
-            "interactive web-based learning environment for introducing "
-            "fundamental concepts of computational chemistry and "
-            "cheminformatics. The application enables users to study "
-            "theoretical concepts, enter molecular structures using SMILES "
-            "notation, visualize molecules in two and three dimensions, "
-            "calculate important molecular descriptors, compare "
-            "structure–property relationships, and complete an assessment. "
-            "The complete application was implemented using Python and "
-            "Streamlit, with RDKit as the main cheminformatics toolkit.",
-            body_style
-        )
-    )
+            "The Cheminformatics Virtual Laboratory was developed "
+            "as an interactive web-based platform for teaching "
+            "molecular representation, visualization and molecular "
+            "property calculation."
+        ),
 
-    # ========================================================
-    # OBJECTIVES
-    # ========================================================
-
-    story.append(
-        Paragraph(
+        (
             "2. Objectives",
-            heading_style
-        )
-    )
 
-    objectives = [
-        "To develop an interactive virtual laboratory for teaching cheminformatics.",
-        "To introduce molecular representation using SMILES notation.",
-        "To generate two-dimensional molecular structures.",
-        "To visualize molecules in three dimensions.",
-        "To calculate important physicochemical molecular descriptors.",
-        "To investigate structure–property relationships.",
-        "To assess student understanding using an integrated quiz.",
-        "To deploy the application using Streamlit Cloud."
-    ]
+            "The objectives include molecular visualization, SMILES "
+            "representation, descriptor calculation, structure-property "
+            "analysis and student assessment."
+        ),
 
-    for item in objectives:
+        (
+            "3. Technologies Used",
 
-        story.append(
-            Paragraph(
-                "• " + item,
-                bullet_style
-            )
-        )
+            "The project uses Python, Streamlit, RDKit, Pandas, "
+            "Matplotlib, py3Dmol and ReportLab."
+        ),
 
-    # ========================================================
-    # SOFTWARE
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "3. Software and Technologies Used",
-            heading_style
-        )
-    )
-
-    technology_data = [
-        ["Technology", "Purpose"],
-        ["Python", "Core programming language."],
-        ["Streamlit", "Interactive web application interface."],
-        ["RDKit", "Molecular processing and descriptor calculation."],
-        ["Pandas", "Data handling and tabular presentation."],
-        ["Matplotlib", "Graphical structure–property analysis."],
-        ["py3Dmol", "Three-dimensional molecular visualization."],
-        ["ReportLab", "PDF report generation."],
-        ["Streamlit Cloud", "Application deployment."]
-    ]
-
-    technology_table = Table(
-        technology_data,
-        colWidths=[1.6 * inch, 4.0 * inch],
-        repeatRows=1
-    )
-
-    technology_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#17365D")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("PADDING", (0, 0), (-1, -1), 7)
-        ])
-    )
-
-    story.append(technology_table)
-
-    # ========================================================
-    # MODULES
-    # ========================================================
-
-    story.append(
-        Paragraph(
+        (
             "4. Functional Modules",
-            heading_style
-        )
-    )
 
-    modules = [
-
-        (
-            "4.1 Home Module",
-            "Introduces the virtual laboratory, learning objectives "
-            "and example molecules."
+            "The application contains Home, Theory, Molecular "
+            "Visualization, Molecular Descriptor Calculation, "
+            "Structure–Property Analysis, Assessment and Final Report modules."
         ),
 
         (
-            "4.2 Theory Module",
-            "Provides theoretical information about cheminformatics, "
-            "SMILES notation and molecular descriptors."
-        ),
+            "5. Conclusion",
 
-        (
-            "4.3 Molecular Visualization",
-            "Allows users to enter SMILES notation and generate "
-            "two-dimensional molecular structures."
-        ),
-
-        (
-            "4.4 Three-Dimensional Visualization",
-            "Generates molecular geometry and displays interactive "
-            "three-dimensional structures."
-        ),
-
-        (
-            "4.5 Molecular Descriptor Calculator",
-            "Calculates Molecular Weight, LogP, TPSA, HBD, HBA, "
-            "Rotatable Bonds and Ring Count."
-        ),
-
-        (
-            "4.6 Structure–Property Analysis",
-            "Compares molecular properties and generates graphical "
-            "relationships between selected descriptors."
-        ),
-
-        (
-            "4.7 Assessment Module",
-            "Evaluates student understanding using multiple-choice "
-            "questions and automatic scoring."
+            "The application provides an interactive virtual laboratory "
+            "environment for students to explore molecular structures "
+            "and their physicochemical properties."
         )
     ]
 
-    for heading, description in modules:
+    for heading, content in sections:
 
         story.append(
             Paragraph(
                 heading,
-                subheading_style
+                heading_style
             )
         )
 
         story.append(
+            Spacer(1, 0.1 * inch)
+        )
+
+        story.append(
             Paragraph(
-                description,
+                content,
                 body_style
             )
         )
 
-    story.append(PageBreak())
-
-    # ========================================================
-    # MOLECULAR DESCRIPTORS
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "5. Molecular Descriptors",
-            heading_style
-        )
-    )
-
-    descriptor_data = [
-        ["Descriptor", "Description"],
-        ["Molecular Weight", "Total molecular mass."],
-        ["LogP", "Measure associated with molecular lipophilicity."],
-        ["TPSA", "Topological polar surface area."],
-        ["HBD", "Number of hydrogen bond donors."],
-        ["HBA", "Number of hydrogen bond acceptors."],
-        ["Rotatable Bonds", "Indicator of molecular flexibility."],
-        ["Ring Count", "Number of molecular rings."]
-    ]
-
-    descriptor_table = Table(
-        descriptor_data,
-        colWidths=[1.7 * inch, 3.9 * inch],
-        repeatRows=1
-    )
-
-    descriptor_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#2F5597")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("PADDING", (0, 0), (-1, -1), 7)
-        ])
-    )
-
-    story.append(descriptor_table)
-
-    # ========================================================
-    # DEPLOYMENT
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "6. Deployment and Dependency Configuration",
-            heading_style
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "The application was deployed using Streamlit Community Cloud. "
-            "During deployment, dependency-related errors were encountered "
-            "and resolved through proper configuration of Python packages "
-            "and Linux system libraries.",
-            body_style
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "6.1 Python Dependencies",
-            subheading_style
-        )
-    )
-
-    requirements_data = [
-        ["Package"],
-        ["streamlit"],
-        ["pandas"],
-        ["matplotlib"],
-        ["py3Dmol"],
-        ["rdkit"],
-        ["reportlab"]
-    ]
-
-    requirements_table = Table(
-        requirements_data,
-        colWidths=[3 * inch]
-    )
-
-    requirements_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#17365D")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("PADDING", (0, 0), (-1, -1), 6)
-        ])
-    )
-
-    story.append(requirements_table)
-
-    story.append(
-        Paragraph(
-            "6.2 Linux System Dependencies",
-            subheading_style
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "The RDKit drawing functionality required additional Linux "
-            "libraries. The missing libXrender.so.1 error was resolved "
-            "using packages.txt.",
-            body_style
-        )
-    )
-
-    packages_data = [
-        ["System Package"],
-        ["libxrender1"],
-        ["libxext6"],
-        ["libsm6"]
-    ]
-
-    packages_table = Table(
-        packages_data,
-        colWidths=[3 * inch]
-    )
-
-    packages_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#17365D")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("PADDING", (0, 0), (-1, -1), 6)
-        ])
-    )
-
-    story.append(packages_table)
-
-    # ========================================================
-    # PROBLEMS AND SOLUTIONS
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "7. Problems Encountered and Solutions",
-            heading_style
-        )
-    )
-
-    problem_data = [
-        ["Problem", "Solution"],
-
-        [
-            "Missing Python packages",
-            "Added the required packages to requirements.txt."
-        ],
-
-        [
-            "libXrender.so.1 missing",
-            "Added libxrender1, libxext6 and libsm6 to packages.txt."
-        ],
-
-        [
-            "PDF file not found",
-            "Generated the PDF directly in memory using BytesIO."
-        ],
-
-        [
-            "Single-file Streamlit application",
-            "Used sidebar navigation and one page configuration."
-        ]
-    ]
-
-    problem_table = Table(
-        problem_data,
-        colWidths=[2.2 * inch, 3.4 * inch],
-        repeatRows=1
-    )
-
-    problem_table.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), HexColor("#2F5597")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("PADDING", (0, 0), (-1, -1), 7)
-        ])
-    )
-
-    story.append(problem_table)
-
-    # ========================================================
-    # FINAL OUTCOME
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "8. Final Outcome",
-            heading_style
-        )
-    )
-
-    final_points = [
-
-        "Interactive single-file Streamlit application.",
-
-        "SMILES input and molecular validation.",
-
-        "Two-dimensional molecular visualization.",
-
-        "Three-dimensional molecular visualization.",
-
-        "Automatic molecular descriptor calculation.",
-
-        "Structure–property comparison and graphs.",
-
-        "Integrated student assessment.",
-
-        "PDF final report generation and download.",
-
-        "Successful deployment configuration."
-    ]
-
-    for item in final_points:
-
         story.append(
-            Paragraph(
-                "• " + item,
-                bullet_style
-            )
+            Spacer(1, 0.2 * inch)
         )
 
-    # ========================================================
-    # FUTURE SCOPE
-    # ========================================================
+    doc.build(story)
 
-    story.append(
-        Paragraph(
-            "9. Future Scope",
-            heading_style
-        )
-    )
-
-    future_scope = [
-
-        "Addition of MOL and SDF file upload.",
-
-        "More advanced molecular descriptors.",
-
-        "Machine learning-based property prediction.",
-
-        "Additional student assessments.",
-
-        "Student progress tracking.",
-
-        "More advanced molecular visualization tools."
-    ]
-
-    for item in future_scope:
-
-        story.append(
-            Paragraph(
-                "• " + item,
-                bullet_style
-            )
-        )
-
-    # ========================================================
-    # CONCLUSION
-    # ========================================================
-
-    story.append(
-        Paragraph(
-            "10. Conclusion",
-            heading_style
-        )
-    )
-
-    story.append(
-        Paragraph(
-            "The Cheminformatics Virtual Laboratory successfully integrates "
-            "Python-based scientific computing with interactive web technology "
-            "for chemical education. The combination of Streamlit and RDKit "
-            "provides an accessible environment for molecular representation, "
-            "visualization, descriptor calculation and structure–property "
-            "analysis. The final application also includes PDF report generation, "
-            "allowing users to download the project report directly from the "
-            "web application.",
-            body_style
-        )
-    )
-
-    # ========================================================
-    # FOOTER
-    # ========================================================
-
-    def add_page_number(canvas, doc):
-
-        canvas.saveState()
-
-        canvas.setFont("Helvetica", 8)
-
-        canvas.setFillColor(colors.grey)
-
-        canvas.drawCentredString(
-            A4[0] / 2,
-            25,
-            f"Cheminformatics Virtual Laboratory | Page {doc.page}"
-        )
-
-        canvas.restoreState()
-
-    # Build PDF
-    doc.build(
-        story,
-        onFirstPage=add_page_number,
-        onLaterPages=add_page_number
-    )
-
-    # IMPORTANT: Get PDF bytes from memory
     pdf_data = buffer.getvalue()
 
     buffer.close()
@@ -713,89 +711,126 @@ page = st.sidebar.radio(
     "Navigation",
 
     [
+
         "🏠 Home",
+
         "📖 Theory",
-        "🧬 SMILES & Molecular Visualization",
-        "📊 Molecular Descriptors",
+
+        "🧬 Molecular Visualization",
+
+        "📊 Molecular Properties Report",
+
         "📈 Structure–Property Analysis",
+
         "📝 Assessment",
-        "📄 Final Report"
+
+        "📄 Final Project Report"
+
     ]
 )
 
-
 st.sidebar.divider()
 
-st.sidebar.info("""
-### Learning Objectives
+st.sidebar.markdown("""
+### 🎓 Learning Objectives
 
-• SMILES representation
+Students can learn:
 
-• 2D and 3D visualization
-
-• Molecular descriptors
-
-• Structure–property relationships
+- SMILES notation
+- Molecular representation
+- 2D visualization
+- 3D visualization
+- Molecular descriptors
+- Structure-property relationships
 """)
 
 
 # ============================================================
-# HOME
+# HOME PAGE
 # ============================================================
 
 if page == "🏠 Home":
 
-    st.title("🧪 Cheminformatics Virtual Laboratory")
-
-    st.subheader(
-        "Computational Representation, Visualization and Analysis "
-        "of Chemical Structures"
+    st.markdown(
+        '<div class="main-title">'
+        '🧪 Cheminformatics Virtual Laboratory'
+        '</div>',
+        unsafe_allow_html=True
     )
 
+    st.markdown("## Welcome to the Virtual Laboratory")
+
+    st.write("""
+    This interactive virtual laboratory helps students understand
+    important concepts in cheminformatics and computational chemistry.
+    """)
+
+    st.markdown("### 🧪 What can students do?")
+
     st.markdown("""
-## Welcome
+    ✅ Enter any SMILES notation
 
-This virtual laboratory introduces fundamental concepts of
-**Cheminformatics**.
+    ✅ Validate molecular structures
 
-Students can:
+    ✅ Generate 2D structures
 
-- Learn molecular representation
-- Enter SMILES notation
-- Visualize molecules
-- Calculate descriptors
-- Analyze structure–property relationships
-- Complete an assessment
-""")
+    ✅ Generate interactive 3D structures
 
-    st.markdown("## 🧪 Example Molecules")
+    ✅ Select different molecular visualization styles
 
-    examples = pd.DataFrame({
+    ✅ Calculate complete molecular properties
+
+    ✅ Download molecular reports
+
+    ✅ Compare multiple molecules
+
+    ✅ Complete an assessment
+    """)
+
+    st.markdown("### Example Molecules")
+
+    example_df = pd.DataFrame({
 
         "Molecule": [
+
             "Ethanol",
+
             "Benzene",
+
+            "Phenol",
+
             "Acetic Acid",
+
+            "Aspirin",
+
             "Caffeine"
         ],
 
         "SMILES": [
+
             "CCO",
+
             "c1ccccc1",
+
+            "Oc1ccccc1",
+
             "CC(=O)O",
+
+            "CC(=O)Oc1ccccc1C(=O)O",
+
             "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
         ]
     })
 
     st.dataframe(
-        examples,
+        example_df,
         use_container_width=True,
         hide_index=True
     )
 
 
 # ============================================================
-# THEORY
+# THEORY PAGE
 # ============================================================
 
 elif page == "📖 Theory":
@@ -807,121 +842,149 @@ elif page == "📖 Theory":
 
 Cheminformatics combines:
 
-- ⚗️ Chemistry
-- 💻 Computer Science
-- 📊 Data Analysis
+- Chemistry ⚗️
+- Computer Science 💻
+- Data Analysis 📊
 
-It uses computational methods to represent, store and analyze
-chemical information.
+It uses computational techniques to store, process,
+visualize and analyze chemical information.
 """)
 
     st.markdown("""
 ## SMILES
 
-SMILES means:
+**SMILES** means:
 
-**Simplified Molecular Input Line Entry System**
+### Simplified Molecular Input Line Entry System
 
-It represents molecular structures using text.
+It represents a molecular structure using a text string.
 
 Examples:
 
-- Ethanol → `CCO`
-- Benzene → `c1ccccc1`
-- Acetic Acid → `CC(=O)O`
+| Molecule | SMILES |
+|---|---|
+| Ethanol | CCO |
+| Benzene | c1ccccc1 |
+| Acetic Acid | CC(=O)O |
 """)
 
     st.markdown("""
 ## Molecular Descriptors
 
-Important descriptors include:
+Molecular descriptors provide numerical information
+about a chemical structure.
+
+Examples include:
 
 - Molecular Weight
 - LogP
 - TPSA
 - Hydrogen Bond Donors
 - Hydrogen Bond Acceptors
+- Rotatable Bonds
+""")
+
+    st.markdown("""
+## 3D Molecular Models
+
+Different visualization models help students understand
+the molecular geometry.
+
+### 🟢 Ball and Stick
+
+Shows atoms as spheres and bonds as sticks.
+
+### 🟡 Stick Model
+
+Emphasizes chemical bonding.
+
+### 🔵 Space Filling
+
+Shows the approximate molecular volume.
+
+### ⚫ Wireframe
+
+Provides a simplified representation of the molecule.
 """)
 
 
 # ============================================================
-# VISUALIZATION
+# MOLECULAR VISUALIZATION PAGE
 # ============================================================
 
-elif page == "🧬 SMILES & Molecular Visualization":
+elif page == "🧬 Molecular Visualization":
 
-    st.title("🧬 Molecular Visualization")
+    st.title("🧬 Molecular Visualization Laboratory")
 
-    examples_dict = {
+    examples = {
 
         "Ethanol": "CCO",
 
         "Benzene": "c1ccccc1",
 
+        "Phenol": "Oc1ccccc1",
+
         "Acetic Acid": "CC(=O)O",
+
+        "Aspirin": "CC(=O)Oc1ccccc1C(=O)O",
 
         "Caffeine":
         "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
     }
 
-    if "visualization_smiles" not in st.session_state:
-
-        st.session_state.visualization_smiles = "CCO"
-
     col1, col2 = st.columns([2, 1])
 
     with col1:
 
-        st.text_input(
+        smiles = st.text_input(
             "Enter SMILES",
+            value="CCO",
             key="visualization_smiles"
         )
 
     with col2:
 
-        selected_example = st.selectbox(
-            "Choose Example",
-            list(examples_dict.keys())
+        selected = st.selectbox(
+            "Choose Example Molecule",
+            list(examples.keys())
         )
 
         if st.button("Load Example"):
 
-            st.session_state.visualization_smiles = (
-                examples_dict[selected_example]
-            )
+            smiles = examples[selected]
+
+            st.session_state.visualization_smiles = smiles
 
             st.rerun()
-
-    smiles = st.session_state.visualization_smiles
 
     mol = get_molecule(smiles)
 
     if mol is None:
 
-        st.error("❌ Invalid SMILES")
+        st.error("❌ Invalid SMILES notation.")
 
     else:
 
-        st.success("✅ Valid molecular structure")
+        st.success("✅ Valid Molecular Structure!")
 
-        col1, col2 = st.columns(2)
+        col1, col2 = st.columns([1.2, 1])
 
         with col1:
 
-            st.subheader("2D Structure")
+            st.subheader("2D Molecular Structure")
 
-            image = Draw.MolToImage(
-                mol,
-                size=(500, 400)
-            )
+            image = generate_2d_image(mol)
 
             st.image(image)
 
         with col2:
 
-            properties = calculate_properties(mol)
-
             st.subheader("Molecular Information")
+
+            st.write(
+                "**Input SMILES:**",
+                smiles
+            )
 
             st.write(
                 "**Canonical SMILES:**",
@@ -929,153 +992,396 @@ elif page == "🧬 SMILES & Molecular Visualization":
             )
 
             st.write(
-                "**Molecular Formula:**",
-                properties["Molecular Formula"]
+                "**Formula:**",
+                rdMolDescriptors.CalcMolFormula(mol)
             )
 
             st.write(
-                "**Number of Atoms:**",
+                "**Atoms:**",
                 mol.GetNumAtoms()
+            )
+
+            st.write(
+                "**Bonds:**",
+                mol.GetNumBonds()
             )
 
         st.divider()
 
-        if st.button("🌐 Generate 3D Structure"):
+        st.subheader("🌐 Interactive 3D Molecular Structure")
 
-            try:
+        visualization_style = st.selectbox(
 
-                mol3d = Chem.AddHs(mol)
+            "Select Molecular Model",
 
-                status = AllChem.EmbedMolecule(
-                    mol3d,
-                    randomSeed=42
+            [
+
+                "Ball and Stick",
+
+                "Stick",
+
+                "Space Filling",
+
+                "Wireframe",
+
+                "Cartoon"
+            ]
+        )
+
+        show_surface = st.checkbox(
+            "Show van der Waals Surface"
+        )
+
+        if st.button("🚀 Generate 3D Structure"):
+
+            with st.spinner(
+                "Generating 3D molecular structure..."
+            ):
+
+                mol3d = generate_3d_molecule(mol)
+
+            if mol3d is None:
+
+                st.error(
+                    "Unable to generate the 3D structure."
                 )
 
-                if status == 0:
+            else:
 
-                    try:
-                        AllChem.MMFFOptimizeMolecule(mol3d)
-                    except Exception:
-                        pass
+                display_3d_structure(
 
-                    mol_block = Chem.MolToMolBlock(mol3d)
+                    mol3d,
 
-                    view = py3Dmol.view(
-                        width=900,
-                        height=500
+                    visualization_style,
+
+                    show_surface
+                )
+
+
+# ============================================================
+# COMPLETE MOLECULAR PROPERTIES REPORT
+# ============================================================
+
+elif page == "📊 Molecular Properties Report":
+
+    st.title("📊 Complete Molecular Properties Report")
+
+    st.info("""
+Enter any valid SMILES notation. The system will automatically
+generate a complete molecular properties report.
+""")
+
+    smiles = st.text_input(
+
+        "Enter New SMILES",
+
+        value="CCO",
+
+        key="properties_smiles"
+    )
+
+    if smiles:
+
+        mol = get_molecule(smiles)
+
+        if mol is None:
+
+            st.error(
+                "❌ Invalid SMILES notation. Please check the structure."
+            )
+
+        else:
+
+            st.success(
+                "✅ Valid Molecular Structure Detected!"
+            )
+
+            properties = calculate_properties(mol)
+
+            canonical_smiles = Chem.MolToSmiles(mol)
+
+            # ------------------------------------------------
+            # BASIC INFORMATION
+            # ------------------------------------------------
+
+            col1, col2 = st.columns([1.2, 1])
+
+            with col1:
+
+                st.subheader("🧬 2D Molecular Structure")
+
+                image = generate_2d_image(mol)
+
+                st.image(image)
+
+            with col2:
+
+                st.subheader("📋 Basic Information")
+
+                st.write(
+                    "**Input SMILES:**",
+                    smiles
+                )
+
+                st.write(
+                    "**Canonical SMILES:**",
+                    canonical_smiles
+                )
+
+                st.write(
+                    "**Molecular Formula:**",
+                    properties["Molecular Formula"]
+                )
+
+                st.write(
+                    "**Atoms:**",
+                    properties["Number of Atoms"]
+                )
+
+                st.write(
+                    "**Heavy Atoms:**",
+                    properties["Heavy Atoms"]
+                )
+
+                st.write(
+                    "**Bonds:**",
+                    properties["Number of Bonds"]
+                )
+
+            st.divider()
+
+            # ------------------------------------------------
+            # PROPERTY METRICS
+            # ------------------------------------------------
+
+            st.subheader("📊 Important Molecular Properties")
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.metric(
+                "Molecular Weight",
+                f"{properties['Molecular Weight']} g/mol"
+            )
+
+            col2.metric(
+                "LogP",
+                properties["LogP"]
+            )
+
+            col3.metric(
+                "TPSA",
+                f"{properties['TPSA']} Å²"
+            )
+
+            col4.metric(
+                "Ring Count",
+                properties["Ring Count"]
+            )
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            col1.metric(
+                "H-Bond Donors",
+                properties["Hydrogen Bond Donors"]
+            )
+
+            col2.metric(
+                "H-Bond Acceptors",
+                properties["Hydrogen Bond Acceptors"]
+            )
+
+            col3.metric(
+                "Rotatable Bonds",
+                properties["Rotatable Bonds"]
+            )
+
+            col4.metric(
+                "Fraction Csp3",
+                properties["Fraction Csp3"]
+            )
+
+            st.divider()
+
+            # ------------------------------------------------
+            # COMPLETE TABLE
+            # ------------------------------------------------
+
+            st.subheader("📑 Complete Molecular Property Table")
+
+            report_data = [
+
+                ["Input SMILES", smiles],
+
+                ["Canonical SMILES", canonical_smiles]
+            ]
+
+            for key, value in properties.items():
+
+                report_data.append(
+                    [key, value]
+                )
+
+            report_df = pd.DataFrame(
+
+                report_data,
+
+                columns=[
+                    "Property",
+                    "Value"
+                ]
+            )
+
+            st.dataframe(
+
+                report_df,
+
+                use_container_width=True,
+
+                hide_index=True
+            )
+
+            # ------------------------------------------------
+            # DOWNLOAD CSV
+            # ------------------------------------------------
+
+            csv = report_df.to_csv(
+                index=False
+            ).encode("utf-8")
+
+            st.download_button(
+
+                "⬇️ Download Properties Report (CSV)",
+
+                data=csv,
+
+                file_name="Molecular_Properties_Report.csv",
+
+                mime="text/csv"
+            )
+
+            # ------------------------------------------------
+            # DOWNLOAD PDF
+            # ------------------------------------------------
+
+            if st.button(
+                "📄 Generate Molecular PDF Report"
+            ):
+
+                with st.spinner(
+                    "Generating molecular PDF report..."
+                ):
+
+                    pdf = generate_molecule_pdf(
+
+                        smiles,
+
+                        mol,
+
+                        properties
                     )
 
-                    view.addModel(
-                        mol_block,
-                        "mol"
-                    )
+                st.download_button(
 
-                    view.setStyle({
-                        "stick": {}
-                    })
+                    "⬇️ Download Molecular Properties PDF",
 
-                    view.setBackgroundColor("white")
+                    data=pdf,
 
-                    view.zoomTo()
+                    file_name="Molecular_Properties_Report.pdf",
 
-                    components.html(
-                        view._make_html(),
-                        height=520
+                    mime="application/pdf"
+                )
+
+            st.divider()
+
+            # ------------------------------------------------
+            # 3D VISUALIZATION
+            # ------------------------------------------------
+
+            st.subheader("🌐 3D Molecular Visualization")
+
+            model_style = st.selectbox(
+
+                "Select 3D Model",
+
+                [
+
+                    "Ball and Stick",
+
+                    "Stick",
+
+                    "Space Filling",
+
+                    "Wireframe",
+
+                    "Cartoon"
+                ],
+
+                key="properties_3d_style"
+            )
+
+            surface = st.checkbox(
+
+                "Show van der Waals Surface",
+
+                key="properties_surface"
+            )
+
+            if st.button(
+                "🚀 Generate 3D Molecular Model",
+                key="properties_generate_3d"
+            ):
+
+                with st.spinner(
+                    "Generating 3D molecular model..."
+                ):
+
+                    mol3d = generate_3d_molecule(mol)
+
+                if mol3d is None:
+
+                    st.error(
+                        "Unable to generate the 3D structure."
                     )
 
                 else:
 
-                    st.warning(
-                        "Unable to generate 3D structure."
+                    display_3d_structure(
+
+                        mol3d,
+
+                        model_style,
+
+                        surface
                     )
 
-            except Exception as e:
-
-                st.error(f"3D Error: {e}")
-
 
 # ============================================================
-# MOLECULAR DESCRIPTORS
-# ============================================================
-
-elif page == "📊 Molecular Descriptors":
-
-    st.title("📊 Molecular Descriptor Calculator")
-
-    smiles = st.text_input(
-        "Enter SMILES",
-        value="CCO",
-        key="descriptor_smiles"
-    )
-
-    mol = get_molecule(smiles)
-
-    if mol is None:
-
-        st.error("❌ Invalid SMILES")
-
-    else:
-
-        properties = calculate_properties(mol)
-
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        col1.metric(
-            "Molecular Weight",
-            properties["Molecular Weight"]
-        )
-
-        col2.metric(
-            "LogP",
-            properties["LogP"]
-        )
-
-        col3.metric(
-            "TPSA",
-            properties["TPSA"]
-        )
-
-        col4.metric(
-            "HBD",
-            properties["HBD"]
-        )
-
-        col5.metric(
-            "HBA",
-            properties["HBA"]
-        )
-
-        descriptor_df = pd.DataFrame({
-
-            "Descriptor": list(properties.keys()),
-
-            "Value": list(properties.values())
-        })
-
-        st.dataframe(
-            descriptor_df,
-            use_container_width=True,
-            hide_index=True
-        )
-
-
-# ============================================================
-# STRUCTURE-PROPERTY ANALYSIS
+# STRUCTURE PROPERTY ANALYSIS
 # ============================================================
 
 elif page == "📈 Structure–Property Analysis":
 
     st.title("📈 Structure–Property Analysis")
 
+    st.write("""
+Compare the properties of multiple molecules.
+Enter one molecule per line in the format:
+
+**Molecule Name, SMILES**
+""")
+
     default_data = """Ethanol,CCO
 Benzene,c1ccccc1
 Phenol,Oc1ccccc1
 Acetic Acid,CC(=O)O
-Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
+Aspirin,CC(=O)Oc1ccccc1C(=O)O"""
 
     molecule_input = st.text_area(
-        "Enter: Name,SMILES",
+
+        "Enter Molecules",
+
         value=default_data,
+
         height=200
     )
 
@@ -1084,13 +1390,14 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
     for line in molecule_input.splitlines():
 
         if "," not in line:
+
             continue
 
         name, smiles = line.split(",", 1)
 
         mol = get_molecule(smiles)
 
-        if mol is not None:
+        if mol:
 
             prop = calculate_properties(mol)
 
@@ -1104,9 +1411,13 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
 
                 "TPSA": prop["TPSA"],
 
-                "HBD": prop["HBD"],
+                "HBD": prop["Hydrogen Bond Donors"],
 
-                "HBA": prop["HBA"]
+                "HBA": prop["Hydrogen Bond Acceptors"],
+
+                "Rotatable Bonds": prop["Rotatable Bonds"],
+
+                "Ring Count": prop["Ring Count"]
             })
 
     if rows:
@@ -1119,12 +1430,21 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
             hide_index=True
         )
 
-        properties_list = [
+        columns = [
+
             "MW",
+
             "LogP",
+
             "TPSA",
+
             "HBD",
-            "HBA"
+
+            "HBA",
+
+            "Rotatable Bonds",
+
+            "Ring Count"
         ]
 
         col1, col2 = st.columns(2)
@@ -1132,20 +1452,21 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
         with col1:
 
             x_axis = st.selectbox(
-                "X-axis",
-                properties_list,
-                index=0
+                "Select X-axis",
+                columns
             )
 
         with col2:
 
             y_axis = st.selectbox(
-                "Y-axis",
-                properties_list,
+                "Select Y-axis",
+                columns,
                 index=1
             )
 
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(
+            figsize=(8, 5)
+        )
 
         ax.scatter(
             df[x_axis],
@@ -1156,8 +1477,14 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
         for _, row in df.iterrows():
 
             ax.annotate(
+
                 row["Molecule"],
-                (row[x_axis], row[y_axis])
+
+                (
+                    row[x_axis],
+
+                    row[y_axis]
+                )
             )
 
         ax.set_xlabel(x_axis)
@@ -1181,66 +1508,99 @@ Caffeine,CN1C=NC2=C1C(=O)N(C(=O)N2C)C"""
 
 elif page == "📝 Assessment":
 
-    st.title("📝 Assessment")
+    st.title("📝 Cheminformatics Assessment")
 
     questions = [
 
-        (
+        {
+
+            "question":
             "What does SMILES represent?",
 
-            [
+            "options": [
+
                 "A molecular text representation",
+
                 "A spectroscopy technique",
+
                 "A laboratory instrument"
             ],
 
+            "answer":
             "A molecular text representation"
-        ),
+        },
 
-        (
-            "Which descriptor represents lipophilicity?",
+        {
 
-            [
-                "TPSA",
+            "question":
+            "Which property is commonly associated with molecular lipophilicity?",
+
+            "options": [
+
                 "LogP",
+
+                "TPSA",
+
                 "HBD"
             ],
 
+            "answer":
             "LogP"
-        ),
+        },
 
-        (
-            "HBD means?",
+        {
+
+            "question":
+            "What does HBA mean?",
 
             [
-                "Hydrogen Bond Donor",
-                "High Bond Density",
-                "Heavy Bond Data"
+
+                "Hydrogen Bond Acceptor",
+
+                "Heavy Bond Atom",
+
+                "Hydrogen Bond Analysis"
             ],
 
-            "Hydrogen Bond Donor"
-        )
+            "answer":
+            "Hydrogen Bond Acceptor"
+        }
     ]
 
-    answers = []
+    # IMPORTANT:
+    # Correct the third question structure
 
-    for i, question in enumerate(questions):
+    questions[2]["options"] = [
+
+        "Hydrogen Bond Acceptor",
+
+        "Heavy Bond Atom",
+
+        "Hydrogen Bond Analysis"
+    ]
+
+    student_answers = []
+
+    for i, q in enumerate(questions):
 
         answer = st.radio(
-            question[0],
-            question[1],
-            key=f"question_{i}"
+
+            q["question"],
+
+            q["options"],
+
+            key=f"assessment_{i}"
         )
 
-        answers.append(answer)
+        student_answers.append(answer)
 
     if st.button("Submit Assessment"):
 
         score = 0
 
-        for i, question in enumerate(questions):
+        for i, q in enumerate(questions):
 
-            if answers[i] == question[2]:
+            if student_answers[i] == q["answer"]:
 
                 score += 1
 
@@ -1249,7 +1609,7 @@ elif page == "📝 Assessment":
         ) * 100
 
         st.success(
-            f"Score: {score}/{len(questions)}"
+            f"Your Score: {score}/{len(questions)}"
         )
 
         st.metric(
@@ -1257,33 +1617,59 @@ elif page == "📝 Assessment":
             f"{percentage:.1f}%"
         )
 
+        if percentage >= 80:
+
+            st.balloons()
+
+            st.success(
+                "🎉 Excellent performance!"
+            )
+
+        elif percentage >= 50:
+
+            st.info(
+                "👍 Good! Continue practicing."
+            )
+
+        else:
+
+            st.warning(
+                "📚 Please review the theory section."
+            )
+
 
 # ============================================================
-# FINAL REPORT
+# FINAL PROJECT REPORT
 # ============================================================
 
-elif page == "📄 Final Report":
+elif page == "📄 Final Project Report":
 
     st.title("📄 Final Project Report")
 
     st.markdown("""
 ### Cheminformatics Virtual Laboratory
 
-You can generate and download the complete final project report
+Generate and download the complete final project report
 in PDF format.
 """)
 
-    if st.button("📄 Generate Final Report PDF"):
+    if st.button(
+        "📄 Generate Final Project Report"
+    ):
 
-        with st.spinner("Generating PDF report..."):
+        with st.spinner(
+            "Generating final project report..."
+        ):
 
             pdf = generate_final_report()
 
-        st.success("✅ PDF Report Generated Successfully!")
+        st.success(
+            "✅ Final Project Report Generated Successfully!"
+        )
 
         st.download_button(
 
-            label="⬇️ Download Final Report PDF",
+            label="⬇️ Download Final Project Report PDF",
 
             data=pdf,
 
@@ -1293,3 +1679,15 @@ in PDF format.
 
             mime="application/pdf"
         )
+
+
+# ============================================================
+# FOOTER
+# ============================================================
+
+st.divider()
+
+st.caption(
+    "🧪 Cheminformatics Virtual Laboratory | "
+    "Developed using Python, Streamlit and RDKit"
+)
