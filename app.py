@@ -637,119 +637,131 @@ def save_2d_structure_png(mol):
 
 def save_3d_structure_png(mol):
     """
-    Create a clear ball-and-stick style 3D image for the PDF report.
-    The plot is intentionally simplified: axes and coordinate grids are
-    removed so the molecular geometry is easier for students to see.
+    Create a high-clarity ball-and-stick image for the PDF report.
+
+    The RDKit 3D coordinates are projected onto the best viewing plane so
+    elongated molecules fill the page instead of appearing as a tiny object.
     """
     import matplotlib.pyplot as plt
+    import numpy as np
 
     mol3d = generate_3d_molecule(mol)
     if mol3d is None:
         return None
 
     conf = mol3d.GetConformer()
+    n_atoms = mol3d.GetNumAtoms()
 
-    # Standard approximate CPK colours and relative atom sizes.
+    # Collect 3D coordinates.
+    coords = np.array([
+        [
+            conf.GetAtomPosition(i).x,
+            conf.GetAtomPosition(i).y,
+            conf.GetAtomPosition(i).z,
+        ]
+        for i in range(n_atoms)
+    ], dtype=float)
+
+    # Principal-component projection chooses the clearest overall view.
+    centered = coords - coords.mean(axis=0)
+    if n_atoms >= 3 and np.linalg.matrix_rank(centered) >= 2:
+        _, _, vh = np.linalg.svd(centered, full_matrices=False)
+        projected = centered @ vh[:2].T
+    else:
+        projected = centered[:, :2]
+
+    # CPK-style colours and readable atom sizes.
     cpk = {
-        "H": "#FFFFFF",
-        "C": "#404040",
-        "N": "#3050F8",
-        "O": "#FF0D0D",
-        "F": "#90E050",
-        "P": "#FF8000",
-        "S": "#FFFF30",
-        "Cl": "#1FF01F",
-        "Br": "#A62929",
-        "I": "#940094",
+        "H": "#FFFFFF", "C": "#3F3F3F", "N": "#2F5BFF",
+        "O": "#E53935", "F": "#65C466", "P": "#F39C12",
+        "S": "#F4D03F", "Cl": "#27AE60", "Br": "#8E3B2F",
+        "I": "#8E44AD",
     }
-    atom_sizes = {
-        "H": 45, "C": 130, "N": 145, "O": 150,
-        "F": 140, "P": 165, "S": 170, "Cl": 175,
-        "Br": 190, "I": 210
+    sizes = {
+        "H": 70, "C": 240, "N": 270, "O": 285, "F": 260,
+        "P": 300, "S": 310, "Cl": 310, "Br": 330, "I": 350,
     }
 
-    fig = plt.figure(figsize=(8.2, 6.2), facecolor="white")
-    ax = fig.add_subplot(111, projection="3d")
+    fig, ax = plt.subplots(figsize=(8.8, 6.4), facecolor="white")
     ax.set_facecolor("white")
 
-    # Draw bonds first so atoms appear clearly above them.
+    # Draw bonds first. Multiple bonds are shown with parallel lines.
     for bond in mol3d.GetBonds():
-        a = conf.GetAtomPosition(bond.GetBeginAtomIdx())
-        b = conf.GetAtomPosition(bond.GetEndAtomIdx())
+        i = bond.GetBeginAtomIdx()
+        j = bond.GetEndAtomIdx()
+        x1, y1 = projected[i]
+        x2, y2 = projected[j]
 
-        ax.plot(
-            [a.x, b.x], [a.y, b.y], [a.z, b.z],
-            color="#666666",
-            linewidth=2.4,
-            alpha=0.95
-        )
+        dx, dy = x2 - x1, y2 - y1
+        length = float(np.hypot(dx, dy))
+        if length == 0:
+            continue
 
-    # Draw atoms. Hydrogen atoms are smaller to improve readability.
-    for atom in mol3d.GetAtoms():
-        pos = conf.GetAtomPosition(atom.GetIdx())
-        symbol = atom.GetSymbol()
+        # Perpendicular direction for double/triple bond separation.
+        px, py = -dy / length, dx / length
+        btype = bond.GetBondType()
+        if btype == Chem.BondType.DOUBLE:
+            offsets = (-0.035, 0.035)
+        elif btype == Chem.BondType.TRIPLE:
+            offsets = (-0.055, 0.0, 0.055)
+        else:
+            offsets = (0.0,)
 
-        ax.scatter(
-            pos.x, pos.y, pos.z,
-            s=atom_sizes.get(symbol, 140),
-            c=cpk.get(symbol, "#B0B0B0"),
-            edgecolors="black",
-            linewidths=0.5,
-            depthshade=True
-        )
-
-        # Label only non-hydrogen atoms to avoid clutter.
-        if symbol != "H":
-            ax.text(
-                pos.x, pos.y, pos.z,
-                f" {symbol}",
-                fontsize=9,
-                fontweight="bold"
+        for off in offsets:
+            ax.plot(
+                [x1 + px * off, x2 + px * off],
+                [y1 + py * off, y2 + py * off],
+                color="#707070", linewidth=3.0,
+                solid_capstyle="round", zorder=1
             )
 
-    # Equal visual scale prevents molecular distortion.
-    coords = []
-    for atom in mol3d.GetAtoms():
-        pos = conf.GetAtomPosition(atom.GetIdx())
-        coords.append((pos.x, pos.y, pos.z))
+    # Draw atoms over bonds.
+    for i, atom in enumerate(mol3d.GetAtoms()):
+        symbol = atom.GetSymbol()
+        x, y = projected[i]
+        ax.scatter(
+            x, y,
+            s=sizes.get(symbol, 250),
+            c=cpk.get(symbol, "#A0A0A0"),
+            edgecolors="#222222",
+            linewidths=1.0,
+            zorder=3
+        )
 
-    xs = [c[0] for c in coords]
-    ys = [c[1] for c in coords]
-    zs = [c[2] for c in coords]
+        # Label important/non-carbon hetero atoms only; this keeps the model clean.
+        if symbol not in ("H", "C"):
+            ax.text(
+                x, y, symbol,
+                ha="center", va="center",
+                fontsize=8, fontweight="bold",
+                color="black", zorder=4
+            )
 
-    if xs and ys and zs:
-        x_mid = (max(xs) + min(xs)) / 2
-        y_mid = (max(ys) + min(ys)) / 2
-        z_mid = (max(zs) + min(zs)) / 2
-        span = max(max(xs)-min(xs), max(ys)-min(ys), max(zs)-min(zs), 1.0) / 2
-        span *= 1.25
+    # Tight, equal-aspect limits make the molecule large and clear.
+    xmin, ymin = projected.min(axis=0)
+    xmax, ymax = projected.max(axis=0)
+    width = max(xmax - xmin, 1.0)
+    height = max(ymax - ymin, 1.0)
+    pad = 0.22 * max(width, height)
 
-        ax.set_xlim(x_mid-span, x_mid+span)
-        ax.set_ylim(y_mid-span, y_mid+span)
-        ax.set_zlim(z_mid-span, z_mid+span)
+    ax.set_xlim(xmin - pad, xmax + pad)
+    ax.set_ylim(ymin - pad, ymax + pad)
+    ax.set_aspect("equal", adjustable="box")
+    ax.axis("off")
+    ax.set_title("3D Molecular Structure (Ball-and-Stick)", fontsize=18, fontweight="bold", pad=18)
 
-    ax.set_title("3D Molecular Structure (Ball-and-Stick)", fontsize=15, pad=12)
-    ax.set_axis_off()
-
-    try:
-        ax.set_proj_type("ortho")
-    except Exception:
-        pass
-
-    ax.view_init(elev=20, azim=35)
+    fig.tight_layout(pad=1.2)
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
     tmp.close()
-
     fig.savefig(
         tmp.name,
-        dpi=260,
+        dpi=320,
         bbox_inches="tight",
         facecolor="white",
-        pad_inches=0.15
+        pad_inches=0.12
     )
     plt.close(fig)
-
     return tmp.name
 
 
